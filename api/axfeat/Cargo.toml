@@ -24,6 +24,7 @@ ipi = ["irq", "dep:axipi", "axhal/ipi", "axruntime/ipi"]
 
 # Custom or default platforms
 myplat = ["axhal/myplat"]
+myqemu = ["axhal/myqemu"]
 defplat = ["axhal/defplat"]
 
 # Memory

@@ -1,0 +1,37 @@
+[package]
+name = "axplat-myqemu"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+
+# Provide implementation for `axplat` for a custom QEMU platform
+[dependencies]
+axplat = { version = "0.2.0", features = ["irq"] }
+axconfig = { path = "../../modules/axconfig" }
+axlog = { path = "../../modules/axlog" }
+axcpu = { version = "0.2.2" }
+log = "0.4"
+cfg-if = "1.0"
+memory_addr = "0.4.0"
+kspin = "0.1"
+lazyinit = "0.2"
+page_table_entry = "0.5"
+spin = { version = "0.10", features = ["mutex", "lazy", "rwlock", "once"] }
+
+# Platform-specific drivers
+arm_pl011 = "0.1"
+arm_pl031 = { version = "0.2", features = ["chrono"] }
+arm-gic-driver = "0.15"
+aarch64-cpu = "10.0"
+int_ratio = "0.1"
+chrono = { version = "0.4", default-features = false }
+
+# Peripherals library
+axplat-aarch64-peripherals = "0.2.0"
+
+[features]
+default = []
+irq = []
+smp = []
+rtc = []
+fp-simd = []

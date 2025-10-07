@@ -1,0 +1,20 @@
+# ArceOS配置 - 作业2: QEMU平台适配与UART测试
+# Custom QEMU virt platform configuration
+
+[build]
+platform = "aarch64-qemu-virt"
+
+# 内核基地址配置
+kernel-base-paddr = "0x4020_0000"   # 物理地址
+kernel-base-vaddr = "0xffff_0000_4020_0000"  # 虚拟地址（使用恒等映射时等于物理地址）
+
+# 物理内存配置
+phys-memory-base = "0x4000_0000"
+phys-memory-size = "0x800_0000"  # 128 MB
+
+# UART配置
+uart-paddr = "0x0900_0000"
+uart-irq = 33
+
+# 平台特性
+smp = 1

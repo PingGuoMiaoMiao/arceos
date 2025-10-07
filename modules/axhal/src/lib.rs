@@ -43,15 +43,16 @@ cfg_if::cfg_if! {
         // link the custom platform crate in your application.
     } else if #[cfg(target_os = "none")] {
         #[cfg(target_arch = "x86_64")]
-        extern crate axplat_x86_pc;
+        extern crate axplat_x86_pc as axplat;
         #[cfg(target_arch = "aarch64")]
-        extern crate axplat_aarch64_qemu_virt;
+        extern crate axplat_aarch64_qemu_virt as axplat;
         #[cfg(target_arch = "riscv64")]
-        extern crate axplat_riscv64_qemu_virt;
+        extern crate axplat_riscv64_qemu_virt as axplat;
         #[cfg(target_arch = "loongarch64")]
-        extern crate axplat_loongarch64_qemu_virt;
+        extern crate axplat_loongarch64_qemu_virt as axplat;
     } else {
         // Link the dummy platform implementation to pass cargo test.
+        extern crate axplat;
         mod dummy;
     }
 }

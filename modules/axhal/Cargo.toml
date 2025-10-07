@@ -20,8 +20,12 @@ uspace = ["paging", "axcpu/uspace"]
 
 # Custom or default platforms
 myplat = []
-defplat = ["dep:axplat-x86-pc", "dep:axplat-aarch64-qemu-virt", "dep:axplat-riscv64-qemu-virt", "dep:axplat-loongarch64-qemu-virt"]
-
+myqemu = ["dep:axplat-myqemu"]  # 新增：我们的自定义 QEMU virt 平台
+defplat = ["dep:axplat", "dep:axplat-x86-pc", "dep:axplat-aarch64-qemu-virt", "dep:axplat-riscv64-qemu-virt", "dep:axplat-loongarch64-qemu-virt"]
+aarch64-qemu-virt = []  # 添加这一行
+x86-pc = [] # 新增
+riscv64-qemu-virt = [] # 新增
+aarch64-raspi = [] # 新增
 default = []
 ipi = ["irq"]
 
@@ -36,7 +40,7 @@ memory_addr = "0.4"
 linkme = { version = "0.3.33", optional = true }
 page_table_multiarch = { version = "0.5", features = ["copy-from"], optional = true }
 axcpu = "0.2"
-axplat = "0.2"
+axplat = { version = "0.2", optional = true }
 axlog = { workspace = true }
 axconfig = { workspace = true }
 axalloc = { workspace = true, optional = true }
@@ -47,6 +51,7 @@ axplat-x86-pc = { version = "0.2", optional = true }
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu = "10.0"
 axplat-aarch64-qemu-virt = { version = "0.2", optional = true }
+axplat-myqemu = { path = "../../platforms/axplat-myqemu", optional = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 axplat-riscv64-qemu-virt = { version = "0.2", optional = true }

@@ -27,10 +27,14 @@ members = [
 
     "examples/helloworld",
     "examples/helloworld-myplat",
+    "examples/uart_test",
+    "examples/myqemu_test",
     "examples/httpclient",
     "examples/httpserver",
     "examples/httpserver",
     "examples/shell",
+
+    "platforms/axplat-myqemu",
 ]
 
 [workspace.package]

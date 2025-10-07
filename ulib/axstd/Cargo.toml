@@ -31,6 +31,7 @@ ipi = ["arceos_api/ipi", "axfeat/ipi"]
 
 # Custom or default platforms
 myplat = ["axfeat/myplat"]
+myqemu = ["axfeat/myqemu"]
 defplat = ["axfeat/defplat"]
 
 # Memory

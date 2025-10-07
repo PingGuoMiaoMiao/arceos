@@ -1,0 +1,9 @@
+# Configuration for custom myqemu platform test
+# 作业2: QEMU平台适配与UART测试
+
+[build]
+platform = "aarch64-qemu-virt"
+
+[myqemu]
+# Custom platform configuration
+enabled = true

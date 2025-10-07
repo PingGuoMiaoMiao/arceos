@@ -1,0 +1,13 @@
+[package]
+name = "uart_test"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "ArceOS UART Test - Assignment 2"
+
+[dependencies]
+axstd = { path = "../../ulib/axstd", features = ["alloc"] }
+
+[[bin]]
+name = "uart_test"
+path = "src/main.rs"

@@ -1,0 +1,16 @@
+[package]
+name = "myqemu_test"
+version = "0.1.0"
+edition = "2021"
+authors = ["Student <student@example.com>"]
+description = "Custom QEMU virt platform migration test"
+
+[dependencies]
+axstd = { path = "../../ulib/axstd", features = ["myqemu"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+axplat-myqemu = { path = "../../platforms/axplat-myqemu" }
+
+[[bin]]
+name = "myqemu_test"
+path = "src/main.rs"
