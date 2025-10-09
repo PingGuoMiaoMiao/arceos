@@ -33,6 +33,8 @@ members = [
     "examples/httpserver",
     "examples/httpserver",
     "examples/shell",
+    "examples/net_module_test",
+    "examples/network_extension",
 
     "platforms/axplat-myqemu",
 ]

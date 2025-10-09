@@ -10,3 +10,9 @@ qemu.log
 rusty-tags.vi
 /.project*
 /.axconfig.*
+
+# Assignment build artifacts
+examples/*/target/
+examples/*/*.lock
+*.elf
+*.bin

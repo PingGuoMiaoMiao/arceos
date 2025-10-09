@@ -1,0 +1,14 @@
+[package]
+name = "network_extension"
+version = "0.1.0"
+edition = "2021"
+authors = ["PingGuoMiaoMiao <student@example.com>"]
+description = "ArceOS Assignment 3: Advanced Network Module Extension"
+
+[dependencies]
+axstd = { path = "../../ulib/axstd", features = ["alloc", "net", "fs"] }
+axalloc = { path = "../../modules/axalloc" }
+
+[[bin]]
+name = "network_extension"
+path = "src/main.rs"

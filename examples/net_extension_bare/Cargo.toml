@@ -1,0 +1,14 @@
+[package]
+name = "net_extension_bare"
+version = "0.1.0"
+edition = "2021"
+authors = ["PingGuoMiaoMiao <student@example.com>"]
+description = "ArceOS Assignment 3: Network Module Extension (Bare Metal)"
+
+[workspace]
+
+[dependencies]
+
+[[bin]]
+name = "net_extension_bare"
+path = "src/main.rs"

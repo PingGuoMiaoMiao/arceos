@@ -143,6 +143,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "arceos-net-module-test"
+version = "0.1.0"
+dependencies = [
+ "axstd",
+]
+
+[[package]]
 name = "arceos-shell"
 version = "0.1.0"
 dependencies = [
@@ -1557,6 +1564,14 @@ name = "myqemu_test"
 version = "0.1.0"
 dependencies = [
  "axplat-myqemu",
+ "axstd",
+]
+
+[[package]]
+name = "network_extension"
+version = "0.1.0"
+dependencies = [
+ "axalloc",
  "axstd",
 ]
 
