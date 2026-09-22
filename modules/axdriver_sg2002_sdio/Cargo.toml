@@ -1,0 +1,16 @@
+[package]
+name = "axdriver_sg2002_sdio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "CV181x SDIO1 host support for the SG2002 platform"
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+hardware = ["dep:axhal"]
+
+[dependencies]
+axhal = { workspace = true, optional = true, features = ["irq", "myplat"] }

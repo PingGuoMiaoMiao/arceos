@@ -1,0 +1,11 @@
+[package]
+name = "arceos-sdio-enumerate-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axdriver_sg2002_sdio = { workspace = true, features = ["hardware"] }
+axhal = { workspace = true, features = ["irq", "myplat"] }
+axstd = { workspace = true, features = ["irq", "myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano", features = ["irq"] }
