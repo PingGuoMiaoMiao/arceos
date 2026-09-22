@@ -1,0 +1,9 @@
+[package]
+name = "arceos-tpu-init-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axstd = { workspace = true, features = ["myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano" }

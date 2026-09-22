@@ -1,0 +1,12 @@
+[package]
+name = "arceos-tpu-execute-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axstd = { workspace = true, features = ["myplat", "alloc"] }
+axalloc = { workspace = true }
+axhal = { workspace = true, features = ["myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano" }
+axmodel_mushroom_yolov5 = { workspace = true, features = ["hardware"] }
