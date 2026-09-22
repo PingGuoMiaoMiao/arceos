@@ -1,0 +1,15 @@
+[package]
+name = "arceos-mushroom-web-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[lib]
+name = "mushroom_web_licheerv_nano"
+
+[features]
+default = []
+hardware = ["axmodel_mushroom_yolov5/hardware"]
+
+[dependencies]
+axmodel_mushroom_yolov5 = { workspace = true }

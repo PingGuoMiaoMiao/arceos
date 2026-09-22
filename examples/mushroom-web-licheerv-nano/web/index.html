@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ArceOS 蘑菇检测</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101714; color: #ecf7f0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #244c38, #101714 44rem); }
+    main { width: min(960px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0 64px; }
+    header { margin-bottom: 24px; }
+    h1 { margin: 0 0 8px; font-size: clamp(30px, 7vw, 54px); letter-spacing: -0.04em; }
+    header p { color: #a9c5b4; margin: 0; line-height: 1.6; }
+    .card { background: rgba(16, 27, 21, .9); border: 1px solid #345544; border-radius: 18px; padding: 18px; box-shadow: 0 18px 50px #06100980; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    input[type=file] { flex: 1 1 260px; min-width: 0; padding: 12px; border-radius: 12px; border: 1px solid #456b55; background: #17261e; color: inherit; }
+    button { border: 0; border-radius: 12px; padding: 13px 20px; font: inherit; font-weight: 700; background: #71e6a2; color: #092214; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .status { margin: 14px 0 0; min-height: 1.5em; color: #bdd3c5; }
+    .status[data-state=error] { color: #ffaaa0; }
+    .status[data-state=ok] { color: #8ff0b5; }
+    .viewer { margin-top: 18px; min-height: 220px; display: grid; place-items: center; overflow: hidden; border-radius: 14px; background: #050806; border: 1px solid #263c30; }
+    canvas { display: none; width: 100%; height: auto; }
+    .placeholder { color: #799184; text-align: center; padding: 56px 20px; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+    .metric { padding: 12px; border-radius: 12px; background: #16231c; border: 1px solid #2b4636; }
+    .metric span { display: block; color: #8ca99a; font-size: 13px; }
+    .metric strong { display: block; margin-top: 4px; font-size: 19px; }
+    footer { margin-top: 18px; color: #769080; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ArceOS 蘑菇检测</h1>
+      <p>图片只在手机内完成解码和缩放；开发板接收固定 RGB 数据，使用 SG2002 TPU 推理。</p>
+    </header>
+    <section class="card">
+      <div class="toolbar">
+        <input id="photo" type="file" accept="image/*">
+        <button id="infer" type="button" disabled>上传并检测</button>
+      </div>
+      <p id="status" class="status" role="status">正在检查开发板状态…</p>
+      <div class="viewer">
+        <p id="placeholder" class="placeholder">选择一张蘑菇照片后，将在这里显示检测框。</p>
+        <canvas id="result"></canvas>
+      </div>
+      <div class="summary">
+        <div class="metric"><span>检测数量</span><strong id="count">—</strong></div>
+        <div class="metric"><span>TPU 时间</span><strong id="tpu-time">—</strong></div>
+        <div class="metric"><span>总时间</span><strong id="total-time">—</strong></div>
+      </div>
+      <footer>上传格式：PhoneImageEnvelopeV1 · ARIM · RGB_U8 CHW · 1228800 字节 payload</footer>
+    </section>
+  </main>
+  <script>
+    'use strict';
+    const SIZE = 640;
+    const PLANE = SIZE * SIZE;
+    const PAYLOAD_LENGTH = 1228800;
+    const HEADER_LENGTH = 40;
+    const CONTENT_TYPE = 'application/vnd.arceos.rgb-u8';
+    const photo = document.querySelector('#photo');
+    const inferButton = document.querySelector('#infer');
+    const status = document.querySelector('#status');
+    const resultCanvas = document.querySelector('#result');
+    const placeholder = document.querySelector('#placeholder');
+    const resultContext = resultCanvas.getContext('2d');
+    let selectedBitmap = null;
+
+    function setStatus(message, state = '') {
+      status.textContent = message;
+      status.dataset.state = state;
+    }
+
+    function crc32(bytes) {
+      let crc = 0xffffffff;
+      for (const byte of bytes) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit += 1) {
+          crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+        }
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function centeredLetterbox(width, height) {
+      const scale = Math.min(SIZE / width, SIZE / height);
+      const resizedWidth = Math.floor(width * scale);
+      const resizedHeight = Math.floor(height * scale);
+      return {
+        sourceWidth: width,
+        sourceHeight: height,
+        resizedWidth,
+        resizedHeight,
+        padX: Math.floor((SIZE - resizedWidth) / 2),
+        padY: Math.floor((SIZE - resizedHeight) / 2),
+      };
+    }
+
+    function buildEnvelope(bitmap) {
+      const meta = centeredLetterbox(bitmap.width, bitmap.height);
+      const work = document.createElement('canvas');
+      work.width = SIZE;
+      work.height = SIZE;
+      const context = work.getContext('2d', { willReadFrequently: true });
+      context.fillStyle = '#000';
+      context.fillRect(0, 0, SIZE, SIZE);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(bitmap, meta.padX, meta.padY, meta.resizedWidth, meta.resizedHeight);
+      const rgba = context.getImageData(0, 0, SIZE, SIZE).data;
+      const payload = new Uint8Array(PAYLOAD_LENGTH);
+      for (let pixel = 0; pixel < PLANE; pixel += 1) {
+        const rgbaOffset = pixel * 4;
+        payload[pixel] = rgba[rgbaOffset];
+        payload[PLANE + pixel] = rgba[rgbaOffset + 1];
+        payload[PLANE * 2 + pixel] = rgba[rgbaOffset + 2];
+      }
+
+      const header = new ArrayBuffer(HEADER_LENGTH);
+      const headerBytes = new Uint8Array(header);
+      headerBytes.set(new TextEncoder().encode('ARIM'), 0);
+      const view = new DataView(header);
+      view.setUint16(4, 1, true);
+      view.setUint16(6, HEADER_LENGTH, true);
+      view.setUint32(8, meta.sourceWidth, true);
+      view.setUint32(12, meta.sourceHeight, true);
+      view.setUint32(16, meta.resizedWidth, true);
+      view.setUint32(20, meta.resizedHeight, true);
+      view.setUint32(24, meta.padX, true);
+      view.setUint32(28, meta.padY, true);
+      view.setUint32(32, PAYLOAD_LENGTH, true);
+      view.setUint32(36, crc32(payload), true);
+      return { body: new Blob([header, payload], { type: CONTENT_TYPE }), meta };
+    }
+
+    function drawResult(bitmap, detections) {
+      resultCanvas.width = bitmap.width;
+      resultCanvas.height = bitmap.height;
+      resultContext.drawImage(bitmap, 0, 0);
+      const lineWidth = Math.max(3, Math.round(Math.min(bitmap.width, bitmap.height) / 180));
+      resultContext.lineWidth = lineWidth;
+      resultContext.font = `${Math.max(18, lineWidth * 5)}px system-ui`;
+      resultContext.textBaseline = 'top';
+      for (const detection of detections) {
+        const width = detection.x2 - detection.x1;
+        const height = detection.y2 - detection.y1;
+        resultContext.strokeStyle = '#42ff91';
+        resultContext.strokeRect(detection.x1, detection.y1, width, height);
+        const text = `${detection.label} ${(detection.score * 100).toFixed(1)}%`;
+        const metrics = resultContext.measureText(text);
+        const labelHeight = Math.max(24, lineWidth * 7);
+        const labelY = Math.max(0, detection.y1 - labelHeight);
+        resultContext.fillStyle = '#07170dcc';
+        resultContext.fillRect(detection.x1, labelY, metrics.width + 12, labelHeight);
+        resultContext.fillStyle = '#8affb6';
+        resultContext.fillText(text, detection.x1 + 6, labelY + 2);
+      }
+      placeholder.style.display = 'none';
+      resultCanvas.style.display = 'block';
+    }
+
+    async function checkHealth() {
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const health = await response.json();
+        setStatus(`开发板已连接 · Wi-Fi ${health.wifi} · TPU ${health.tpu}`, 'ok');
+      } catch (error) {
+        setStatus(`尚未连接到 ArceOS 服务：${error.message}`, 'error');
+      }
+    }
+
+    photo.addEventListener('change', async () => {
+      inferButton.disabled = true;
+      if (!photo.files || photo.files.length !== 1) return;
+      try {
+        if (selectedBitmap) selectedBitmap.close();
+        selectedBitmap = await createImageBitmap(photo.files[0], { imageOrientation: 'from-image' });
+        drawResult(selectedBitmap, []);
+        inferButton.disabled = false;
+        setStatus(`已载入 ${selectedBitmap.width} × ${selectedBitmap.height}，可以检测。`, 'ok');
+      } catch (error) {
+        selectedBitmap = null;
+        setStatus(`图片解码失败：${error.message}`, 'error');
+      }
+    });
+
+    inferButton.addEventListener('click', async () => {
+      if (!selectedBitmap) return;
+      inferButton.disabled = true;
+      setStatus('正在生成 RGB CHW 数据并上传…');
+      try {
+        const envelope = buildEnvelope(selectedBitmap);
+        const response = await fetch('/api/infer', {
+          method: 'POST',
+          headers: { 'Content-Type': CONTENT_TYPE },
+          body: envelope.body,
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error?.message || `HTTP ${response.status}`);
+        const detections = Array.isArray(payload.detections) ? payload.detections : [];
+        drawResult(selectedBitmap, detections);
+        document.querySelector('#count').textContent = String(detections.length);
+        document.querySelector('#tpu-time').textContent = `${payload.timing_us.tpu} μs`;
+        document.querySelector('#total-time').textContent = `${payload.timing_us.total} μs`;
+        setStatus(`请求 ${payload.request_id} 完成。`, 'ok');
+      } catch (error) {
+        setStatus(`检测失败：${error.message}`, 'error');
+      } finally {
+        inferButton.disabled = false;
+      }
+    });
+
+    checkHealth();
+  </script>
+</body>
+</html>
