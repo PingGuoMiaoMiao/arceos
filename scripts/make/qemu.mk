@@ -34,7 +34,7 @@ qemu_args-x86_64 := \
 
 qemu_args-riscv64 := \
   -machine $(machine) \
-  -bios default \
+  -bios $(BIOS) \
   -kernel $(FINAL_IMG)
 
 qemu_args-aarch64 := \

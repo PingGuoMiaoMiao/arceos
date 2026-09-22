@@ -1,0 +1,37 @@
+# Architecture identifier.
+arch = "riscv64"
+# Platform identifier.
+platform = "riscv64-licheerv-nano"
+# Platform package.
+package = "axplat-riscv64-licheerv-nano"
+
+[plat]
+# SG2002 LicheeRV Nano uses one C906B core in this stage.
+max-cpu-num = 1
+# Board SDK memmap.py: 256 MiB DDR starts at 0x8000_0000.
+phys-memory-base = 0x8000_0000
+phys-memory-size = 0x1000_0000
+# Board SDK CONFIG_KERNEL_ENTRY_HACK_ADDR.
+kernel-base-paddr = 0x8020_0000
+kernel-base-vaddr = "0xffff_ffc0_8020_0000"
+phys-virt-offset = "0xffff_ffc0_0000_0000"
+phys-bus-offset = 0
+kernel-aspace-base = "0xffff_ffc0_0000_0000"
+kernel-aspace-size = "0x0000_003f_ffff_f000"
+boot-stack-size = 0x40000
+
+[devices]
+# Resources used by the current single-core UART, TPU, PLIC and SDIO stages.
+mmio-ranges = [
+    [0x0414_0000, 0x1000], # UART0: snps,dw-apb-uart
+    [0x0432_0000, 0x1000], # SDIO1: cvitek,cv181x-sdio
+    [0x0c10_0000, 0x1000], # TPU TDMA (read-only in the current specification)
+    [0x0c10_1000, 0x1000], # TPU TIU (read-only in the current specification)
+    [0x7000_0000, 0x0400_0000], # PLIC: 101 device IRQs
+] # [(uint, uint)]
+# soph_base_riscv.dtsi: timebase-frequency = <25000000>.
+timer-frequency = 25_000_000
+# Supervisor timer interrupt cause.
+timer-irq = "0x8000_0000_0000_0005"
+# Supervisor software interrupt cause. SMP support is not enabled yet.
+ipi-irq = "0x8000_0000_0000_0001"

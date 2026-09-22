@@ -25,6 +25,8 @@
 #     - `GRAPHIC`: Enable display devices and graphic output (virtio-gpu)
 #     - `BUS`: Device bus type: mmio, pci
 #     - `MEM`: Memory size (default is 128M)
+#     - `BIOS`: RISC-V firmware image (auto-detects a local OpenSBI build,
+#       otherwise uses QEMU built-in firmware)
 #     - `DISK_IMG`: Path to the virtual disk image
 #     - `ACCEL`: Enable hardware acceleration (KVM on linux)
 #     - `QEMU_LOG`: Enable QEMU logging (log file is "qemu.log")
@@ -61,6 +63,8 @@ NET ?= n
 GRAPHIC ?= n
 BUS ?= pci
 MEM ?= 128M
+OPENSBI_FW := $(HOME)/opensbi/build/platform/generic/firmware/fw_dynamic.bin
+BIOS ?= $(if $(wildcard $(OPENSBI_FW)),$(OPENSBI_FW),default)
 ACCEL ?=
 QEMU_ARGS ?=
 
