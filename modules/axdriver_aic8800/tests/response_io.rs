@@ -2,7 +2,8 @@ use std::collections::VecDeque;
 
 use axdriver_aic8800::device::Aic8800Product;
 use axdriver_aic8800::response::{
-    AicResponseError, AicResponseIo, read_config_response, receive_pending_frame,
+    AicResponseError, AicResponseIo, D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH, read_config_response,
+    receive_pending_frame,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -87,6 +88,21 @@ fn d80_block_status_reads_function_one_fifo_in_512_byte_units() {
     assert_eq!(
         io.events,
         vec![Event::ReadRegister(1, 0x04), Event::ReadFifo(1, 0x0f, 1024),]
+    );
+}
+
+#[test]
+fn d80_maximum_receive_transfer_accepts_seven_sdio_blocks() {
+    let mut io = FakeIo::new([7]);
+    let mut output = [0_u8; D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH];
+
+    let length = receive_pending_frame(&mut io, Aic8800Product::Aic8800D80, &mut output).unwrap();
+
+    assert_eq!(D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH, 3584);
+    assert_eq!(length, Some(3584));
+    assert_eq!(
+        io.events,
+        vec![Event::ReadRegister(1, 0x04), Event::ReadFifo(1, 0x0f, 3584),]
     );
 }
 

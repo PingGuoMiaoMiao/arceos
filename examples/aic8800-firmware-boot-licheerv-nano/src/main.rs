@@ -21,6 +21,7 @@ use axdriver_aic8800::key::AicKeyClient;
 use axdriver_aic8800::management::AicManagementClient;
 use axdriver_aic8800::me::AicMeClient;
 use axdriver_aic8800::patch_table::parse_patch_table;
+use axdriver_aic8800::response::D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH;
 use axdriver_aic8800::rf::AicRfClient;
 use axdriver_aic8800::rsn::{
     build_wpa2_psk_ccmp_station_information_element, parse_rsn_information_element,
@@ -189,7 +190,7 @@ fn main() {
     };
     let mut parameter = [0_u8; 1032];
     let mut transmit = [0_u8; 2048];
-    let mut receive = [0_u8; 1536];
+    let mut receive = [0_u8; D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH];
     let mut client = AicDebugClient::new(
         &mut io,
         product,

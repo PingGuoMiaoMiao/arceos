@@ -113,7 +113,7 @@ pub enum TpuExecutionError {
 pub fn validate_dma_buffer(
     physical_address: usize,
     bytes: &[u8],
-) -> Result<&DmaBufferHeader, DmaBufferError> {
+) -> Result<DmaBufferHeader, DmaBufferError> {
     if physical_address & 0xfff != 0 {
         return Err(DmaBufferError::AddressNotPageAligned);
     }
@@ -121,9 +121,9 @@ pub fn validate_dma_buffer(
         return Err(DmaBufferError::BufferTooSmall);
     }
 
-    // SAFETY: the byte slice was checked to contain the complete header. The
-    // caller-provided dmabuf starts at a page-aligned address.
-    let header = unsafe { &*(bytes.as_ptr() as *const DmaBufferHeader) };
+    // SAFETY: the byte slice contains the complete header. `bytes` may be a
+    // subslice whose pointer is not naturally aligned, so use an unaligned copy.
+    let header = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const DmaBufferHeader) };
     if header.magic_main != DMABUF_MAGIC_MAIN {
         return Err(DmaBufferError::InvalidMagic);
     }
@@ -161,10 +161,11 @@ pub fn relocate_dma_buffer(
 
     for index in 0..descriptor_count as usize {
         let offset = descriptor_base + index * core::mem::size_of::<CpuSyncDescriptor>();
-        // SAFETY: validation proved that the complete descriptor table is
-        // contained in `bytes`; the SDK structure is packed and 32-bit based.
-        let descriptor =
-            unsafe { &mut *(bytes.as_mut_ptr().add(offset) as *mut CpuSyncDescriptor) };
+        // SAFETY: validation proved that the complete descriptor is contained
+        // in `bytes`; use unaligned copies because the public slice need not be aligned.
+        let descriptor_pointer =
+            unsafe { bytes.as_mut_ptr().add(offset) as *mut CpuSyncDescriptor };
+        let mut descriptor = unsafe { core::ptr::read_unaligned(descriptor_pointer) };
 
         if descriptor.tiu_descriptor_count & 0xffff != 0 {
             let original = descriptor.tiu_descriptor_offset;
@@ -187,6 +188,8 @@ pub fn relocate_dma_buffer(
             descriptor.tdma_descriptor_offset =
                 u32::try_from(relocated).map_err(|_| DmaBufferError::RelocatedAddressOutOfRange)?;
         }
+        // SAFETY: `descriptor_pointer` refers to the same validated descriptor range.
+        unsafe { core::ptr::write_unaligned(descriptor_pointer, descriptor) };
     }
     Ok(())
 }
@@ -201,8 +204,9 @@ pub fn set_neuron_and_weight_bases(
     if bytes.len() < core::mem::size_of::<DmaBufferHeader>() {
         return Err(DmaBufferError::BufferTooSmall);
     }
-    // SAFETY: the complete C-compatible header is present in `bytes`.
-    let header = unsafe { &mut *(bytes.as_mut_ptr() as *mut DmaBufferHeader) };
+    let header_pointer = bytes.as_mut_ptr() as *mut DmaBufferHeader;
+    // SAFETY: the complete C-compatible header is present; use an unaligned copy.
+    let mut header = unsafe { core::ptr::read_unaligned(header_pointer) };
     if header.magic_main != DMABUF_MAGIC_MAIN {
         return Err(DmaBufferError::InvalidMagic);
     }
@@ -212,6 +216,8 @@ pub fn set_neuron_and_weight_bases(
         .map_err(|_| DmaBufferError::RelocatedAddressOutOfRange)?;
     header.array_bases[0] = [neuron, 0];
     header.array_bases[1] = [weight, 0];
+    // SAFETY: `header_pointer` still refers to the validated header range.
+    unsafe { core::ptr::write_unaligned(header_pointer, header) };
     Ok(())
 }
 
@@ -223,8 +229,9 @@ pub fn set_array_bases(
     if bytes.len() < core::mem::size_of::<DmaBufferHeader>() {
         return Err(DmaBufferError::BufferTooSmall);
     }
-    // SAFETY: the complete C-compatible header is present in `bytes`.
-    let header = unsafe { &mut *(bytes.as_mut_ptr() as *mut DmaBufferHeader) };
+    let header_pointer = bytes.as_mut_ptr() as *mut DmaBufferHeader;
+    // SAFETY: the complete C-compatible header is present; use an unaligned copy.
+    let mut header = unsafe { core::ptr::read_unaligned(header_pointer) };
     if header.magic_main != DMABUF_MAGIC_MAIN {
         return Err(DmaBufferError::InvalidMagic);
     }
@@ -232,6 +239,8 @@ pub fn set_array_bases(
         let low = u32::try_from(address).map_err(|_| DmaBufferError::RelocatedAddressOutOfRange)?;
         header.array_bases[index] = [low, 0];
     }
+    // SAFETY: `header_pointer` still refers to the validated header range.
+    unsafe { core::ptr::write_unaligned(header_pointer, header) };
     Ok(())
 }
 
@@ -356,8 +365,11 @@ pub fn execute_dma_buffer(physical_address: usize, bytes: &[u8]) -> Result<(), T
     let descriptor_base = core::mem::size_of::<DmaBufferHeader>();
     for index in 0..header.cpu_descriptor_count as usize {
         let offset = descriptor_base + index * core::mem::size_of::<CpuSyncDescriptor>();
-        // SAFETY: DMABUF validation proved the CPU descriptor table bounds.
-        let descriptor = unsafe { &*(bytes.as_ptr().add(offset) as *const CpuSyncDescriptor) };
+        // SAFETY: validation proved the descriptor bounds; use an unaligned copy
+        // because callers may provide an unaligned subslice.
+        let descriptor = unsafe {
+            core::ptr::read_unaligned(bytes.as_ptr().add(offset) as *const CpuSyncDescriptor)
+        };
         let tiu_count = descriptor.tiu_descriptor_count & 0xffff;
         let tdma_count = descriptor.tdma_descriptor_count & 0xffff;
 

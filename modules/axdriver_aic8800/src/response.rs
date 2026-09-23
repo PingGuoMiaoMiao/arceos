@@ -10,6 +10,8 @@ const D80_OTHER_INTERRUPT: u8 = 1 << 7;
 const D80_FUNCTION_1_BYTE_MODE_STATUS: u8 = 120;
 const D80_FUNCTION_2_BYTE_MODE_STATUS: u8 = 127;
 
+pub const D80_MAXIMUM_RECEIVE_TRANSFER_LENGTH: usize = 7 * SDIO_BLOCK_SIZE;
+
 pub trait AicResponseIo {
     type Error;
 
