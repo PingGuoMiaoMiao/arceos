@@ -4,5 +4,6 @@ pub mod envelope;
 pub mod http;
 pub mod page;
 pub mod response;
+pub mod server;
 pub mod service;
 pub mod stream;
