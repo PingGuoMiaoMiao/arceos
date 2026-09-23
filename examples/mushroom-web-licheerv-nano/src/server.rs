@@ -9,6 +9,7 @@ pub trait DuplexStream {
     type ReadError;
     type WriteError;
 
+    fn now_micros(&self) -> u64;
     fn read(&mut self, destination: &mut [u8]) -> Result<usize, Self::ReadError>;
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Self::WriteError>;
 }
@@ -48,12 +49,12 @@ pub fn serve_one<S, B>(
     readiness: ServiceReadiness,
     inference_lock: &InferenceLock,
     backend: &mut B,
-    receive_us: u64,
 ) -> Result<ServeOutcome, ServeError<S::ReadError, S::WriteError>>
 where
     S: DuplexStream,
     B: InferenceBackend,
 {
+    let receive_started_us = stream.now_micros();
     let request = match receive_request(stream, header_storage, body_storage) {
         Ok(request) => request,
         Err(ReceiveError::Read(error)) => return Err(ServeError::Read(error)),
@@ -74,6 +75,7 @@ where
             return Ok(ServeOutcome::Responded);
         }
     };
+    let receive_us = stream.now_micros().saturating_sub(receive_started_us);
 
     handle_request(
         request.head,

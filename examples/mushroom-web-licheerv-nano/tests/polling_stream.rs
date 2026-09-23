@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use mushroom_web_licheerv_nano::polling_stream::{
+use arceos_mushroom_web_licheerv_nano::polling_stream::{
     HTTP_IO_INACTIVITY_TIMEOUT_NANOS, PollingStream, PollingStreamError, ReceiveState, SendState,
     TcpPump,
 };
-use mushroom_web_licheerv_nano::server::DuplexStream;
+use arceos_mushroom_web_licheerv_nano::server::DuplexStream;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TestError {

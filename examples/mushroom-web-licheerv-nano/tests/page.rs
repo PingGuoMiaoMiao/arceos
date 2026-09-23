@@ -1,4 +1,4 @@
-use mushroom_web_licheerv_nano::page::INDEX_HTML;
+use arceos_mushroom_web_licheerv_nano::page::INDEX_HTML;
 
 #[test]
 fn embedded_page_contains_the_fixed_upload_contract() {

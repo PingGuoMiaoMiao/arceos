@@ -4,6 +4,8 @@ extern crate axplat_riscv64_licheerv_nano;
 
 mod network;
 
+pub use network::AicNetworkDevice;
+
 use axdriver_aic8800::association::{AicAssociationClient, AssociationEvent, ConnectParameters};
 use axdriver_aic8800::credentials::{parse_wifi_credentials, wifi_credential_wire_length};
 use axdriver_aic8800::d80::{
@@ -41,8 +43,7 @@ use axstd::println;
 use axstd::vec;
 use axstd::vec::Vec;
 use network::AicEthernetDevice;
-use smoltcp::iface::{Config as InterfaceConfig, Interface, SocketSet};
-use smoltcp::phy::Device;
+use smoltcp::iface::{Config as InterfaceConfig, Interface, SocketHandle, SocketSet};
 use smoltcp::socket::dhcpv4;
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, HardwareAddress, IpCidr, Ipv4Cidr};
@@ -68,11 +69,12 @@ const WIFI_NAME: &str = "fmacfwbt_8800d80_h_u02.bin";
 const WIFI_LENGTH: usize = 329580;
 
 pub trait DhcpBoundHandler {
-    fn handle<D: Device>(
+    fn handle<D: AicNetworkDevice>(
         &mut self,
         interface: &mut Interface,
         device: &mut D,
         sockets: &mut SocketSet<'_>,
+        dhcp_handle: SocketHandle,
         address: Ipv4Cidr,
     );
 }
@@ -1108,6 +1110,7 @@ pub fn run<H: DhcpBoundHandler>(handler: &mut H) {
                 &mut network_interface,
                 &mut network_device,
                 &mut sockets,
+                dhcp_handle,
                 address,
             );
             return;

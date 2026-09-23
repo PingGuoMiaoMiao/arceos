@@ -1,18 +1,22 @@
 use core::convert::Infallible;
 
-use axmodel_mushroom_yolov5::{InferenceResult, InferenceTiming, RgbChw640, crc32_ieee};
-use mushroom_web_licheerv_nano::envelope::{
+use arceos_mushroom_web_licheerv_nano::backend::InferenceBackendState;
+use arceos_mushroom_web_licheerv_nano::envelope::{
     HEADER_LENGTH, MAGIC, PAYLOAD_LENGTH, TOTAL_LENGTH, VERSION,
 };
-use mushroom_web_licheerv_nano::server::{DuplexStream, ServeOutcome, serve_one};
-use mushroom_web_licheerv_nano::service::{InferenceBackend, InferenceLock, ServiceReadiness};
-use mushroom_web_licheerv_nano::stream::MAX_REQUEST_HEADER_LENGTH;
+use arceos_mushroom_web_licheerv_nano::server::{DuplexStream, ServeOutcome, serve_one};
+use arceos_mushroom_web_licheerv_nano::service::{
+    InferenceBackend, InferenceLock, ServiceReadiness,
+};
+use arceos_mushroom_web_licheerv_nano::stream::MAX_REQUEST_HEADER_LENGTH;
+use axmodel_mushroom_yolov5::{InferenceResult, InferenceTiming, RgbChw640, crc32_ieee};
 
 struct MemoryDuplex {
     input: Vec<u8>,
     position: usize,
     chunk_size: usize,
     output: Vec<u8>,
+    now_micros: u64,
 }
 
 impl MemoryDuplex {
@@ -22,6 +26,7 @@ impl MemoryDuplex {
             position: 0,
             chunk_size,
             output: Vec::new(),
+            now_micros: 0,
         }
     }
 
@@ -34,6 +39,10 @@ impl DuplexStream for MemoryDuplex {
     type ReadError = Infallible;
     type WriteError = Infallible;
 
+    fn now_micros(&self) -> u64 {
+        self.now_micros
+    }
+
     fn read(&mut self, destination: &mut [u8]) -> Result<usize, Self::ReadError> {
         if self.position == self.input.len() {
             return Ok(0);
@@ -44,6 +53,7 @@ impl DuplexStream for MemoryDuplex {
             .min(self.input.len() - self.position);
         destination[..count].copy_from_slice(&self.input[self.position..self.position + count]);
         self.position += count;
+        self.now_micros += 5;
         Ok(count)
     }
 
@@ -112,7 +122,6 @@ fn serve(stream: &mut MemoryDuplex, backend: &mut RecordingBackend) -> ServeOutc
         ServiceReadiness::READY,
         &InferenceLock::new(),
         backend,
-        7,
     )
     .unwrap()
 }
@@ -137,6 +146,7 @@ fn valid_inference_request_calls_the_backend_once() {
     assert_eq!(backend.calls, 1);
     assert!(stream.response().starts_with("HTTP/1.1 200 OK\r\n"));
     assert!(stream.response().contains("\"request_id\":1"));
+    assert!(stream.response().contains("\"receive\":4005"));
 }
 
 #[test]
@@ -173,4 +183,49 @@ fn eof_during_inference_body_closes_without_inference_or_response() {
     assert_eq!(serve(&mut stream, &mut backend), ServeOutcome::PeerClosed);
     assert_eq!(backend.calls, 0);
     assert!(stream.output.is_empty());
+}
+
+#[test]
+fn unavailable_engine_keeps_health_online_and_rejects_inference_with_503() {
+    let mut backend = InferenceBackendState::<RecordingBackend>::unavailable();
+    let readiness = backend.readiness(true);
+    let lock = InferenceLock::new();
+    let mut header = [0_u8; MAX_REQUEST_HEADER_LENGTH];
+    let mut body = vec![0_u8; TOTAL_LENGTH];
+    let mut health = MemoryDuplex::new(b"GET /health HTTP/1.1\r\nHost: board\r\n\r\n".to_vec(), 64);
+
+    assert_eq!(
+        serve_one(
+            &mut health,
+            &mut header,
+            &mut body,
+            readiness,
+            &lock,
+            &mut backend,
+        )
+        .unwrap(),
+        ServeOutcome::Responded
+    );
+    assert!(health.response().starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(health.response().contains("\"tpu\":\"NotReady\""));
+
+    let mut infer = MemoryDuplex::new(infer_request(&valid_envelope()), 4096);
+    assert_eq!(
+        serve_one(
+            &mut infer,
+            &mut header,
+            &mut body,
+            readiness,
+            &lock,
+            &mut backend,
+        )
+        .unwrap(),
+        ServeOutcome::Responded
+    );
+    assert!(
+        infer
+            .response()
+            .starts_with("HTTP/1.1 503 Service Unavailable\r\n")
+    );
+    assert!(infer.response().contains("\"code\":\"TPU_NOT_READY\""));
 }

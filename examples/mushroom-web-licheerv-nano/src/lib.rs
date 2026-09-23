@@ -1,6 +1,9 @@
 #![no_std]
 
+pub mod backend;
 pub mod envelope;
+#[cfg(feature = "hardware")]
+pub mod hardware;
 pub mod http;
 pub mod page;
 pub mod polling_stream;

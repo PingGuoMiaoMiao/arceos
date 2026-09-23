@@ -3,19 +3,19 @@
 
 extern crate axplat_riscv64_licheerv_nano;
 
-use arceos_aic8800_firmware_boot_licheerv_nano::{DhcpBoundHandler, run};
-use smoltcp::iface::{Interface, SocketSet};
-use smoltcp::phy::Device;
+use arceos_aic8800_firmware_boot_licheerv_nano::{AicNetworkDevice, DhcpBoundHandler, run};
+use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::wire::Ipv4Cidr;
 
 struct StopAfterDhcp;
 
 impl DhcpBoundHandler for StopAfterDhcp {
-    fn handle<D: Device>(
+    fn handle<D: AicNetworkDevice>(
         &mut self,
         _interface: &mut Interface,
         _device: &mut D,
         _sockets: &mut SocketSet<'_>,
+        _dhcp_handle: SocketHandle,
         _address: Ipv4Cidr,
     ) {
     }

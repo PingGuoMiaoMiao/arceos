@@ -1,8 +1,8 @@
-use axmodel_mushroom_yolov5::{Detection, InferenceTiming};
-use mushroom_web_licheerv_nano::response::{
+use arceos_mushroom_web_licheerv_nano::response::{
     ByteWriter, HealthReport, InferenceJson, write_error_response, write_health_response,
     write_inference_response,
 };
+use axmodel_mushroom_yolov5::{Detection, InferenceTiming};
 
 #[derive(Default)]
 struct VecWriter(Vec<u8>);

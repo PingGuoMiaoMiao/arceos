@@ -161,7 +161,7 @@
   ```text
   cargo test -p arceos-mushroom-web-licheerv-nano
   make A=examples/aic8800-firmware-boot-licheerv-nano MYPLAT=axplat-riscv64-licheerv-nano build
-  make A=examples/mushroom-web-licheerv-nano MYPLAT=axplat-riscv64-licheerv-nano FEATURES=hardware build
+  make A=examples/mushroom-web-licheerv-nano MYPLAT=axplat-riscv64-licheerv-nano APP_FEATURES=hardware build
   cargo fmt --all -- --check
   git diff --check
   ```

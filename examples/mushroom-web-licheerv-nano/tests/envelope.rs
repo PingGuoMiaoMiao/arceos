@@ -1,4 +1,4 @@
-use mushroom_web_licheerv_nano::envelope::{
+use arceos_mushroom_web_licheerv_nano::envelope::{
     EnvelopeError, HEADER_LENGTH, MODEL_HEIGHT, MODEL_WIDTH, PAYLOAD_LENGTH, PhoneImageEnvelopeV1,
     SourceImageMeta, TOTAL_LENGTH, crc32_ieee,
 };

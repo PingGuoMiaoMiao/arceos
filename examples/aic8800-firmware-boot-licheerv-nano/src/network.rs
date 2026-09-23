@@ -10,6 +10,10 @@ use smoltcp::time::Instant;
 const ETHERNET_HEADER_LENGTH: usize = 14;
 const MAXIMUM_ETHERNET_FRAME_LENGTH: usize = 1514;
 
+pub trait AicNetworkDevice: Device {
+    fn transport_failed(&self) -> bool;
+}
+
 pub struct AicEthernetDevice<'a, I> {
     client: AicAssociationClient<'a, I>,
     receive_frame: [u8; MAXIMUM_ETHERNET_FRAME_LENGTH],
@@ -234,5 +238,14 @@ where
         capabilities.max_transmission_unit = MAXIMUM_ETHERNET_FRAME_LENGTH;
         capabilities.max_burst_size = Some(1);
         capabilities
+    }
+}
+
+impl<I> AicNetworkDevice for AicEthernetDevice<'_, I>
+where
+    I: AicCommandIo + AicResponseIo<Error = <I as AicCommandIo>::Error>,
+{
+    fn transport_failed(&self) -> bool {
+        AicEthernetDevice::transport_failed(self)
     }
 }

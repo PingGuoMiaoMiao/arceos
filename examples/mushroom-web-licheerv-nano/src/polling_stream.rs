@@ -46,6 +46,10 @@ impl<P: TcpPump> DuplexStream for PollingStream<P> {
     type ReadError = PollingStreamError<P::Error>;
     type WriteError = PollingStreamError<P::Error>;
 
+    fn now_micros(&self) -> u64 {
+        self.pump.now_nanos() / 1_000
+    }
+
     fn read(&mut self, destination: &mut [u8]) -> Result<usize, Self::ReadError> {
         if destination.is_empty() {
             return Ok(0);
