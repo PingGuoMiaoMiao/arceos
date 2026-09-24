@@ -1,0 +1,4 @@
+interface:
+  display_name: "Board UART Capture"
+  short_description: "Capture and diagnose USB-TTL board boot logs"
+  default_prompt: "Use $board-uart-capture to detect my USB serial adapter and capture a board boot log."

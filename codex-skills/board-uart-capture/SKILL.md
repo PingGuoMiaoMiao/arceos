@@ -1,0 +1,55 @@
+---
+name: board-uart-capture
+description: Use when a Windows host must identify a USB-TTL adapter such as CH340, CP210x, or FTDI and capture or diagnose a development-board UART boot log around a manual power-on or reset.
+---
+
+# Board UART Capture
+
+## Overview
+
+建立只读串口证据链：先核对板卡资料和接线，再确认准确 COM 口，看到 `SERIAL_READY` 后才通知用户上电或复位，最后依据原始日志分类结果。不得把“收到字节”当成“正常启动”。
+
+## Workflow
+
+1. 从官方板卡资料、原理图或用户照片提取准确的 `GND/TX/RX`、逻辑电平和波特率。资料没有给出的内容不得猜测，必须向用户索取证据。
+2. 指导断电接线：共地，适配器 TX 接板卡 RX，适配器 RX 接板卡 TX。板卡独立供电时，不连接适配器电源脚。
+3. 在 Windows 中读取现有串口设备及其完整名称。多个串口并存时必须显式指定目标端口。
+4. 找到已安装 `pyserial` 的 Python 解释器，再运行 `python scripts/uart_capture.py --list-ports`。不得因为默认 `python` 缺少模块就安装或覆盖环境。
+5. 使用明确端口、已核实波特率和唯一的新日志路径启动捕获。只有工具打印 `SERIAL_READY` 后，才通知用户上电或按一次 RESET。
+6. 结束捕获后保留原始日志，并报告字节数与分类：`NO_DATA`、`TEXT` 或 `UNREADABLE`。
+7. `UNREADABLE` 表示链路收到数据但当前设置无法可靠解码。按系统化诊断逐项核对接线、电平、地线和官方波特率；每次只改变一个变量。
+
+## Commands
+
+在 Skill 根目录执行：
+
+```powershell
+py -3.12 scripts/uart_capture.py --list-ports
+py -3.12 scripts/uart_capture.py --port COM3 --baud 115200 --log C:\path\board-reset.raw.log
+py -3.12 scripts/uart_capture.py --analyze-log C:\path\board-reset.raw.log
+```
+
+`py -3.12` 只是当前主机已经验证的解释器。其他主机先运行 `py -0p`，再逐个使用输出中的准确解释器路径验证 `import serial`。
+
+## Quick Reference
+
+| 结果 | 含义 | 下一步 |
+|---|---|---|
+| `NO_DATA` | 没收到字节 | 核对 COM 口、GND、TX/RX、供电和复位动作 |
+| `TEXT` | 文本可可靠解码 | 从日志识别 BootROM、OpenSBI、U-Boot、内核或应用阶段 |
+| `UNREADABLE` | 收到字节但不可可靠解码 | 保存证据，逐项核对电平、接线和官方串口参数 |
+
+## Safety Boundaries
+
+- 默认只读，不向串口发送字符或命令。
+- 不自动控制供电或复位；这些动作必须由用户执行。
+- 不自动尝试多个波特率，不用试错掩盖接线或电平问题。
+- 不覆盖已有日志；每次捕获使用新文件。
+- 不在没有权威依据时给出板卡物理针脚位置或逻辑电平。
+
+## Common Mistakes
+
+- 在监听器尚未打印 `SERIAL_READY` 时让用户上电，丢失最早启动日志。
+- 只看到若干字节便宣称系统启动成功。
+- 忽略蓝牙虚拟串口，自动选择了错误 COM 口。
+- 把 TTL 串口与 RS-232 电平混用，或在板卡独立供电时同时连接 VCC。
