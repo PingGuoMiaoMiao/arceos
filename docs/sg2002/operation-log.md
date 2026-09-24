@@ -247,7 +247,7 @@
   - **门禁输入可用**：
     `mushroom_runtime_rgb_verified.bin`（1,228,800 字节，source 640x480，resized 640x480，pad (0,80)）
     与 `runtime_input_rgb_u8.bin`（1,228,800 字节，source 263x191，resized 640x464，pad (0,88)）
-    都能构造出合法 `ARIM` 信封，总长均为 1,228,840 字节，CRC32 分别为 `9391da25` 与 `7f7f31ec54`。
+    都能构造出合法 `ARIM` 信封，总长均为 1,228,840 字节，CRC32 分别为 `9391da25` 与 `7f31ec54`。
   - **错 CRC 不吃 request_id**：`handle_inference` 的顺序是
     `wifi_ready → tpu_ready → PhoneImageEnvelopeV1::parse → payload 长度 → try_acquire()`。
     `request_id` 在 `try_acquire()` 里才 `fetch_add`，而错 CRC 在 `parse` 阶段就已返回
