@@ -43,6 +43,12 @@ if ($launcherText -notmatch '\$capturePort\.Read\(') {
     throw 'Launcher must read raw evidence bytes from the capture port.'
 }
 
+# The worktree config belongs to whatever was built last, so the launcher has to
+# configure this application itself instead of assuming the right platform.
+if ($launcherText -notmatch 'defconfig') {
+    throw 'Launcher must run "make defconfig" before "make build".'
+}
+
 $probeBytes = [byte[]](0x82, 0xB5, 0xF9, 0x00, 0xFF, 0x43)
 
 # Document why the string path had to go: it cannot round-trip high bytes.

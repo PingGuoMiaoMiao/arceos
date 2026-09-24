@@ -89,7 +89,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[1/3] Building '$Example' for LicheeRV Nano..."
-$buildCommand = "cd '$ArceOsDirectory' && make A=$application MYPLAT=$platform APP_FEATURES=$appFeatures build"
+# The worktree keeps whatever .axconfig.toml was configured last, so a plain
+# build fails with "ARCH or MYPLAT has been changed" once anything else has been
+# built. Configure this application first, then build it.
+$buildCommand = "cd '$ArceOsDirectory' && make A=$application MYPLAT=$platform defconfig && make A=$application MYPLAT=$platform APP_FEATURES=$appFeatures build"
 & wsl.exe -d $WslDistribution -- bash -lic $buildCommand
 if ($LASTEXITCODE -ne 0) {
     throw "ArceOS build failed with exit code $LASTEXITCODE."
