@@ -224,6 +224,24 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 对照：09-12 板级验证成功的那次只传输了 `114,752` 字节（约 10 秒），因此大镜像的耗时是本次新增的变量。
 
+**`go` 之后的时间预算（重要）**：跳转后 sender 逐个握手发送 5 个 AIC8800 固件文件——
+板子先打印 `READY AIC_FIRMWARE <名字> <长度>`，sender 才发送该文件与 CRC32；
+随后依次等待各阶段标记。各步骤超时为：
+
+| 步骤 | 超时 |
+| --- | --- |
+| 每个固件文件的 `READY AIC_FIRMWARE` 等待 | 60 秒 × 5 |
+| `verify_aic8800_stack` | 30 秒 |
+| `verify_aic8800_rf_and_mac` | 60 秒 |
+| `verify_aic8800_management` / `_me` / `_sta_interface` | 各 30 秒 |
+| `verify_aic8800_scan` | 60 秒 |
+| `verify_aic8800_link_up`（输凭据之后） | 30 秒 |
+| `verify_aic8800_dhcp` | 150 秒 |
+
+加上固件本体约 380 KB（约 33 秒）与凭据输入的人工等待，**`go` 之后还要数分钟**。
+因此整轮从按 RESET 到出现 `MUSHROOM_WEB_URL`，预期总时长约 **20–28 分钟**。
+
+
 ### 6.4 产品 URL 出现后运行门禁
 
 ```powershell

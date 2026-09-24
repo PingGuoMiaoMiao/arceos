@@ -260,3 +260,19 @@
     校验器 `expected` 的精确相等比较相容。
 - 下一步：继续等待传输完成（预计 `05:25`–`05:29`）。`MUSHROOM_WEB_URL` 出现后执行
   `verify_mushroom_web.py --url ... --input-rgb <上述文件> --input-meta <对应 json> --requests 20`。
+
+### 05:15 +08:00 — 传输期间理清 `go` 之后的完整序列与时间预算
+
+- 观察：传输仍在进行（PID 40712 CPU `7.02s → 7.27s`），日志仍受块缓冲未刷新。
+- 判断依据：阅读 `send_arceos_xmodem.py` 在 `jump` 分支之后的流程，以及各 `verify_*` 的默认超时。
+- 动作：把完整序列与超时预算整理进 `HANDOFF.md` §6.3。
+- 结果：确认 `go 0x80200000` 之后的序列是——
+  `send_aic_firmware_bundle`（**逐个握手**：板子先打印 `READY AIC_FIRMWARE <名字> <长度>`，
+  每个文件 60 秒超时）→ `verify_aic8800_stack`(30s) → `_rf_and_mac`(60s) →
+  `_management`/`_me`/`_sta_interface`(各 30s) → `_scan`(60s) → 若带
+  `--wifi-credentials-prompt` 则 `send_wifi_credentials` → `_link_up`(30s) → `_dhcp`(150s)。
+  加上固件本体约 380 KB（约 33 秒）与人工输入凭据的等待，`go` 之后还要数分钟；
+  **整轮从按 RESET 到 `MUSHROOM_WEB_URL` 预期 20–28 分钟**。
+  另注：`verify_aic8800_firmware_boot`（180 秒）虽然定义在文件里，但本启动器路径并不调用它。
+- 下一步：继续等待。若在某个 `verify_*` 步骤超时，失败点会直接决定是固件握手、AIC8800 初始化，
+  还是 DHCP 环节——那将是下一轮定位的入口。
