@@ -6,7 +6,7 @@ use arceos_mushroom_web_licheerv_nano::envelope::{
 use arceos_mushroom_web_licheerv_nano::http::{RequestHead, RequestRoute};
 use arceos_mushroom_web_licheerv_nano::response::ByteWriter;
 use arceos_mushroom_web_licheerv_nano::service::{
-    InferenceBackend, InferenceLock, ServiceReadiness, handle_request,
+    InferenceBackend, InferenceLock, ServiceOutcome, ServiceReadiness, handle_request,
 };
 use axmodel_mushroom_yolov5::{Detection, InferenceResult, InferenceTiming, RgbChw640, crc32_ieee};
 
@@ -100,7 +100,7 @@ fn valid_inference_calls_the_backend_and_returns_the_fixed_contract() {
     };
     let mut writer = VecWriter::default();
 
-    handle_request(
+    let outcome = handle_request(
         infer_head(),
         &body,
         ServiceReadiness::READY,
@@ -112,6 +112,14 @@ fn valid_inference_calls_the_backend_and_returns_the_fixed_contract() {
     .unwrap();
 
     assert_eq!(backend.calls, 1);
+    let ServiceOutcome::InferenceCompleted(report) = outcome else {
+        panic!("expected inference completion report");
+    };
+    assert_eq!(report.request_id, 1);
+    assert_eq!(report.input_crc32, crc32_ieee(&body[HEADER_LENGTH..]));
+    assert_eq!(report.detection_count, 1);
+    assert_eq!(report.receive_us, 6000);
+    assert_eq!(report.timing.tpu_us, 59_738);
     let body = body_text(writer);
     assert!(body.contains("\"request_id\":1"));
     assert!(body.contains("\"score\":0.924084"));

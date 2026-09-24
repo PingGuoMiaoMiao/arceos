@@ -261,6 +261,21 @@ pub fn run_http_server<D: AicNetworkDevice>(
                 println!("MUSHROOM_WEB_REQUEST_RESPONDED");
                 socket.close();
             }
+            Ok(ServeOutcome::InferenceCompleted(report)) => {
+                println!(
+                    "MUSHROOM_INFERENCE_PASS request_id={} input_crc32={:08x} detections={} receive_us={} quantize_us={} tpu_us={} output_sync_us={} postprocess_us={} total_us={}",
+                    report.request_id,
+                    report.input_crc32,
+                    report.detection_count,
+                    report.receive_us,
+                    report.timing.quantize_us,
+                    report.timing.tpu_us,
+                    report.timing.output_sync_us,
+                    report.timing.postprocess_us,
+                    report.timing.total_us,
+                );
+                socket.close();
+            }
             Ok(ServeOutcome::PeerClosed) => {
                 println!("MUSHROOM_WEB_REQUEST_PEER_CLOSED");
                 socket.abort();

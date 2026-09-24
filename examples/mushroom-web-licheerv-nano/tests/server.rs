@@ -142,8 +142,18 @@ fn valid_inference_request_calls_the_backend_once() {
     let mut stream = MemoryDuplex::new(infer_request(&valid_envelope()), 1536);
     let mut backend = RecordingBackend::default();
 
-    assert_eq!(serve(&mut stream, &mut backend), ServeOutcome::Responded);
+    let ServeOutcome::InferenceCompleted(report) = serve(&mut stream, &mut backend) else {
+        panic!("expected inference completion report");
+    };
     assert_eq!(backend.calls, 1);
+    assert_eq!(report.request_id, 1);
+    assert_eq!(
+        report.input_crc32,
+        crc32_ieee(&valid_envelope()[HEADER_LENGTH..])
+    );
+    assert_eq!(report.detection_count, 0);
+    assert_eq!(report.receive_us, 4005);
+    assert_eq!(report.timing.tpu_us, 2);
     assert!(stream.response().starts_with("HTTP/1.1 200 OK\r\n"));
     assert!(stream.response().contains("\"request_id\":1"));
     assert!(stream.response().contains("\"receive\":4005"));

@@ -63,6 +63,7 @@ fn parses_a_complete_envelope_without_copying_the_payload() {
     );
     assert_eq!(envelope.payload.len(), PAYLOAD_LENGTH);
     assert_eq!(envelope.payload.as_ptr(), bytes[HEADER_LENGTH..].as_ptr());
+    assert_eq!(envelope.payload_crc32, read_u32(&bytes, 36));
 }
 
 #[test]

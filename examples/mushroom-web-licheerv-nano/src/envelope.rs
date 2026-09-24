@@ -50,6 +50,7 @@ pub enum EnvelopeError {
 pub struct PhoneImageEnvelopeV1<'a> {
     pub meta: SourceImageMeta,
     pub payload: &'a [u8],
+    pub payload_crc32: u32,
 }
 
 impl<'a> PhoneImageEnvelopeV1<'a> {
@@ -118,7 +119,11 @@ impl<'a> PhoneImageEnvelopeV1<'a> {
             });
         }
 
-        Ok(Self { meta, payload })
+        Ok(Self {
+            meta,
+            payload,
+            payload_crc32: expected_crc32,
+        })
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::http::HttpRejection;
 use crate::response::ByteWriter;
 use crate::service::{
-    InferenceBackend, InferenceLock, ServiceReadiness, handle_request, write_http_rejection,
+    InferenceBackend, InferenceLock, InferenceReport, ServiceOutcome, ServiceReadiness,
+    handle_request, write_http_rejection,
 };
 use crate::stream::{ByteReader, MAX_REQUEST_HEADER_LENGTH, ReceiveError, receive_request};
 
@@ -33,6 +34,7 @@ impl<T: DuplexStream> ByteWriter for T {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServeOutcome {
     Responded,
+    InferenceCompleted(InferenceReport),
     PeerClosed,
 }
 
@@ -77,7 +79,7 @@ where
     };
     let receive_us = stream.now_micros().saturating_sub(receive_started_us);
 
-    handle_request(
+    let outcome = handle_request(
         request.head,
         request.body,
         readiness,
@@ -87,5 +89,8 @@ where
         stream,
     )
     .map_err(ServeError::Write)?;
-    Ok(ServeOutcome::Responded)
+    Ok(match outcome {
+        ServiceOutcome::Responded => ServeOutcome::Responded,
+        ServiceOutcome::InferenceCompleted(report) => ServeOutcome::InferenceCompleted(report),
+    })
 }

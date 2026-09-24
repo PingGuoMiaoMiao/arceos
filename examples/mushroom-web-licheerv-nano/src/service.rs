@@ -32,6 +32,21 @@ pub struct ServiceReadiness {
     pub tpu_ready: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InferenceReport {
+    pub request_id: u64,
+    pub input_crc32: u32,
+    pub detection_count: usize,
+    pub receive_us: u64,
+    pub timing: InferenceTiming,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceOutcome {
+    Responded,
+    InferenceCompleted(InferenceReport),
+}
+
 impl ServiceReadiness {
     pub const READY: Self = Self {
         wifi_ready: true,
@@ -98,29 +113,35 @@ pub fn handle_request<B, W>(
     backend: &mut B,
     receive_us: u64,
     writer: &mut W,
-) -> Result<(), W::Error>
+) -> Result<ServiceOutcome, W::Error>
 where
     B: InferenceBackend,
     W: ByteWriter,
 {
     match head.route {
-        RequestRoute::Index => write_index_response(writer),
-        RequestRoute::Health => write_health_response(
-            writer,
-            HealthReport {
-                wifi: if readiness.wifi_ready {
-                    "DhcpBound"
-                } else {
-                    "NotReady"
+        RequestRoute::Index => {
+            write_index_response(writer)?;
+            Ok(ServiceOutcome::Responded)
+        }
+        RequestRoute::Health => {
+            write_health_response(
+                writer,
+                HealthReport {
+                    wifi: if readiness.wifi_ready {
+                        "DhcpBound"
+                    } else {
+                        "NotReady"
+                    },
+                    tpu: if readiness.tpu_ready {
+                        "Ready"
+                    } else {
+                        "NotReady"
+                    },
+                    model: MODEL_NAME,
                 },
-                tpu: if readiness.tpu_ready {
-                    "Ready"
-                } else {
-                    "NotReady"
-                },
-                model: MODEL_NAME,
-            },
-        ),
+            )?;
+            Ok(ServiceOutcome::Responded)
+        }
         RequestRoute::Infer => {
             handle_inference(body, readiness, inference_lock, backend, receive_us, writer)
         }
@@ -141,49 +162,54 @@ fn handle_inference<B, W>(
     backend: &mut B,
     receive_us: u64,
     writer: &mut W,
-) -> Result<(), W::Error>
+) -> Result<ServiceOutcome, W::Error>
 where
     B: InferenceBackend,
     W: ByteWriter,
 {
     if !readiness.wifi_ready {
-        return write_error_response(writer, 503, "WIFI_NOT_READY", "Wi-Fi is not ready");
+        write_error_response(writer, 503, "WIFI_NOT_READY", "Wi-Fi is not ready")?;
+        return Ok(ServiceOutcome::Responded);
     }
     if !readiness.tpu_ready {
-        return write_error_response(writer, 503, "TPU_NOT_READY", "TPU is not ready");
+        write_error_response(writer, 503, "TPU_NOT_READY", "TPU is not ready")?;
+        return Ok(ServiceOutcome::Responded);
     }
 
     let envelope = match PhoneImageEnvelopeV1::parse(body) {
         Ok(envelope) => envelope,
         Err(_) => {
-            return write_error_response(
+            write_error_response(
                 writer,
                 400,
                 "INVALID_ENVELOPE",
                 "PhoneImageEnvelopeV1 validation failed",
-            );
+            )?;
+            return Ok(ServiceOutcome::Responded);
         }
     };
     let payload: &[u8; MODEL_INPUT_LENGTH] = match envelope.payload.try_into() {
         Ok(payload) => payload,
         Err(_) => {
-            return write_error_response(
+            write_error_response(
                 writer,
                 400,
                 "INVALID_ENVELOPE",
                 "PhoneImageEnvelopeV1 payload length is invalid",
-            );
+            )?;
+            return Ok(ServiceOutcome::Responded);
         }
     };
     let permit = match inference_lock.try_acquire() {
         Ok(permit) => permit,
         Err(_) => {
-            return write_error_response(
+            write_error_response(
                 writer,
                 503,
                 "INFERENCE_BUSY",
                 "Another inference request is running",
-            );
+            )?;
+            return Ok(ServiceOutcome::Responded);
         }
     };
 
@@ -193,22 +219,25 @@ where
     }) {
         Ok(inference) => inference,
         Err(_) => {
-            return write_error_response(
-                writer,
-                500,
-                "TPU_EXECUTION_FAILED",
-                "TPU inference failed",
-            );
+            write_error_response(writer, 500, "TPU_EXECUTION_FAILED", "TPU inference failed")?;
+            return Ok(ServiceOutcome::Responded);
         }
     };
     let response_timing = InferenceTiming {
         total_us: receive_us.saturating_add(inference.timing.total_us),
         ..inference.timing
     };
+    let report = InferenceReport {
+        request_id: permit.request_id(),
+        input_crc32: envelope.payload_crc32,
+        detection_count: inference.detections.len(),
+        receive_us,
+        timing: response_timing,
+    };
     write_inference_response(
         writer,
         InferenceJson {
-            request_id: permit.request_id(),
+            request_id: report.request_id,
             model: MODEL_NAME,
             source_width: envelope.meta.source_width,
             source_height: envelope.meta.source_height,
@@ -216,5 +245,6 @@ where
             receive_us,
             timing: response_timing,
         },
-    )
+    )?;
+    Ok(ServiceOutcome::InferenceCompleted(report))
 }
