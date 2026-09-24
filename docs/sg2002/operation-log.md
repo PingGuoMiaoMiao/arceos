@@ -110,3 +110,28 @@
 - 动作：在 COM3、115200 波特率下只读采集 5 秒，保存为 `logs/rx-branch-final-20260925-040759.raw.log`。
 - 结果：收到 19 字节；`line_state=NON_TEXT_SIGNAL`；`printable_ratio=0.211`；`msb_ratio=0.789`；`ascii_run_max=1`。连续三轮都未得到所需物理分支证据。
 - 停止条件：停止自动重复采集。项目等待用户只拔掉 CH340 RXD 信号线并回复“已拔 RXD”；USB 与 GND 保持不动，不按 RESET。收到确认后再进行一次对照采集。
+
+### 04:18–04:45 +08:00 — UART 物理门禁通过
+
+- 观察：CH340 重新枚举为 `COM3` 后线路仍为非文本信号，需要现场把 RXD 接回板子 TX。
+- 判断依据：`artifacts/uart/` 下逐次采集的对照；非文本信号随接线动作出现或消失。
+- 动作：按判定流程现场改线（`GND→GND`、`TXD→板子 RX`、`RXD→板子 TX`、VCC 不接），随后按一次 RESET 采集。
+- 结果：`artifacts/uart/licheerv-nano-restored-boot-20260925-044448.raw.log` 收到 `23,107` 字节，
+  `line_state=UART_TEXT`、`msb_ratio=0.05`、`printable_ratio=0.94`，含 `U-Boot 2021.10`、`Loading Environment`、
+  `Starting kernel`、`Linux version 5.10.4-tag-`。`--scan-logs` 的 `LAST_READABLE_TEXT` 由 `2026-09-14 23:48:44`
+  推进到 `2026-09-25 04:45:41`；日志 SHA-256
+  `7c94ecc5d2d57987f875e2afeab5a56271744bae1c472a8637b17cdf67ea88f4`。UART 物理门禁通过。
+- 中间对照：04:20 只拔 RXD → 0 字节 `NO_DATA`；04:25 接回 → 非文本信号返回；04:30 USB 重新插拔 → 0 字节；
+  04:33 全部接回 → `NON_TEXT_SIGNAL`（1,485 字节）。
+- 下一步：执行 `tools/sg2002/run_arceos_licheerv_nano.ps1` 启动产品镜像。
+
+### 04:45–04:50 +08:00 — 缺根文件系统与门禁范围界定
+
+- 观察：上述启动日志显示 TF 卡只有 `mmcblk0p1`，缺 `mmcblk0p2`；出厂 Linux 进入 USB 大容量存储恢复循环。
+  现场曾准备下载 Sipeed 官方整卡镜像（发布标签 `20260114`，提交 `d4003f`）用于恢复第 2 分区。
+- 判断依据：核对 `send_arceos_xmodem.py`：`LOAD_ADDRESS = 0x8020_0000`，流程为等待 U-Boot 提示符 →
+  XMODEM 把镜像写入内存 → `go 0x80200000`；AIC8800 固件同样由启动器经串口送入。
+- 动作：确认产品门禁不依赖 SD 卡根文件系统，暂停整卡写入，保留已下载的镜像包备用。
+- 结果：认定缺根文件系统只影响板端 Linux 基线（GC4653 摄像头等，见 `HANDOFF.md` §1.2），
+  不属于 STA 产品门禁；不覆盖当前可用的 `mmcblk0p1` 与 U-Boot。
+- 下一步：直接执行产品启动器；取得 `MUSHROOM_WEB_URL` 后运行 `verify_mushroom_web.py`。

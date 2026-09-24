@@ -28,7 +28,7 @@
 | 阶段 | 当前状态 | 已有证据 | 仍缺证据 |
 | --- | --- | --- | --- |
 | 开发环境恢复 | 已完成 | Ubuntu WSL2 可启动；权威工作树可用；固定 Rust/QEMU 工具链可用 | 无 |
-| LicheeRV Nano 平台与 UART | 代码已实现，物理链路未恢复 | 平台代码、构建产物、09-14 前可读真板日志 | 09-25 最新线路为 `NON_TEXT_SIGNAL`，需重新确认 RXD→板子 TX 后取得可读输出 |
+| LicheeRV Nano 平台与 UART | **已恢复，门禁通过** | 平台代码、构建产物、`artifacts/uart/licheerv-nano-restored-boot-20260925-044448.raw.log`（23,107 字节 `UART_TEXT`，`msb_ratio=0.05`） | 无 |
 | TPU MMIO 与执行路径 | 已实现到固定模型运行代码 | TPU 平台代码、DMABUF/WEIGHT 资产、多个 TPU 示例产物 | 本轮真板端推理响应证据 |
 | SG2002 SDIO 与 AIC8800 | 已实现 | SDIO、芯片识别、初始化、固件加载与启动示例及构建产物 | 本轮固件启动和 WPA2 受控端口打开日志 |
 | DHCP 与 STA 网络 | 已实现 | DHCP 会话接口和主机侧测试 | 本轮真板 DHCP 地址 |
@@ -111,13 +111,21 @@
 - DHCP 是否取得地址；
 - HTTP 服务是否打印 `MUSHROOM_WEB_URL`。
 
-因此，当前阻塞点不是继续编写 TPU 功能，而是把 CH340 RXD 确实接到板子 TX，取得 RESET 后的 `UART_TEXT`，再执行已有真板门禁。COM3 当前在线不等于信号线连接正确。
+**已于 2026-09-25 04:45 解决。** 现场把 CH340 TXD/RXD 接正后，按一次 RESET 取得 `23,107` 字节 `UART_TEXT` 启动日志
+（`artifacts/uart/licheerv-nano-restored-boot-20260925-044448.raw.log`，`msb_ratio=0.05`，`printable_ratio=0.94`），
+内含 `U-Boot 2021.10`、`Starting kernel`、`Linux version 5.10.4-tag-`。U-Boot 是否进入加载流程已确认，
+其余各项仍待产品启动器取得证据。
+
+该日志同时显示 TF 卡只有 `mmcblk0p1`、缺 `mmcblk0p2` 根文件系统。**这不阻塞本门禁**：
+`send_arceos_xmodem.py` 经 U-Boot 提示符 + XMODEM 把镜像送到 `0x8020_0000` 后 `go`，
+产品镜像与 AIC8800 固件全部走串口进内存，不读 SD 卡第二分区。不要为恢复根文件系统而覆盖当前可用的整卡。
 
 ## 6. 下一验收门禁
 
-### 6.1 先恢复 UART
+### 6.1 UART（已完成）
 
-先确认三线交叉连接：`GND→GND`、`CH340 TXD→板子 RX`、`CH340 RXD→板子 TX`，VCC 不接。空闲采集出现 0 字节只能说明没有接收到起始位，随后必须按一次 RESET 再采集。只有得到 `line_state=UART_TEXT` 并保存原始日志，才能认为链路恢复；在此之前不对启动成功作结论。
+三线交叉连接 `GND→GND`、`CH340 TXD→板子 RX`、`CH340 RXD→板子 TX`、VCC 不接已现场确认，
+并已取得 `line_state=UART_TEXT` 的 RESET 原始日志（§5）。本项门禁通过，可直接进入 6.2。
 
 ### 6.2 启动 ArceOS 产品镜像
 

@@ -131,6 +131,9 @@ py -3.12 C:\Users\chen\.codex\skills\board-uart-capture\scripts\uart_capture.py 
 
 只有出现 `line_state=UART_TEXT` 才算链路恢复；在这之前不要跑启动器，也不要再试波特率。
 
+> **该条件已于 2026-09-25 04:45 满足**：现场把 RXD 接回板子 TX 后，RESET 取得 `23,107` 字节
+> `UART_TEXT` 启动日志，详情见 `HANDOFF.md` §5.5。本节以下保留为当时的判据记录。
+
 ---
 
 ## 4. 本轮已完成的离线工作
@@ -187,11 +190,16 @@ ASCII 编码解码，**≥0x80 的字节全部变成 `?`**，因此这条路径*
 
 ## 7. 最新状态更正（2026-09-25 03:32）
 
-找到历史接反原因不等于当前链路已经恢复：
+**本节结论已于 2026-09-25 04:45 失效，保留为历史记录。** 当时（03:32）的现场状态是：
 
 - 改线后曾出现 `probe-032806.raw.log`、`confirm-032831.raw.log`、`confirm2-032844.raw.log` 等 0 字节采集；
 - 重新插回 CH340 后，`replugged-033115.raw.log` 收到 3,744 字节；
-- 最新 `check-033212.raw.log` 收到 1,503 字节，仍为与此前一致的 `NON_TEXT_SIGNAL`；
-- Windows 当前仍识别 `USB-SERIAL CH340 (COM3)`。
+- 当时最新 `check-033212.raw.log` 收到 1,503 字节，仍为与此前一致的 `NON_TEXT_SIGNAL`；
+- Windows 当时识别 `USB-SERIAL CH340 (COM3)`。
 
-因此下一步不是继续推断波特率，也不是执行产品启动器。必须先现场确认 `CH340 RXD→板子 TX`，空闲采集后保持接线按一次 RESET，再得到 `line_state=UART_TEXT`。0 字节只表示没有接收到起始位，不能单独作为接线或启动成功证据。
+**04:18–04:45 的现场排查推翻了它**：把 RXD 接回板子 TX 后，RESET 立即取得
+`artifacts/uart/licheerv-nano-restored-boot-20260925-044448.raw.log`（23,107 字节，`line_state=UART_TEXT`，
+含 `U-Boot 2021.10`、`Starting kernel`、`Linux version 5.10.4-tag-`）。
+
+关于 0 字节的判读依然成立：0 字节只表示没有接收到起始位，不能单独作为接线或启动成功的证据，
+必须配合随后的 RESET 采集——这与“改线后先出现 0 字节、再恢复可读文本”的实际过程一致。

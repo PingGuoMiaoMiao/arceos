@@ -10,7 +10,11 @@
 4. `docs/sg2002/operation-log.md`：按时间追加的操作记录；
 5. `docs/superpowers/plans/2026-09-23-sg2002-sta-product-closure.md`：实现与真板门禁计划。
 
-不要先增加新功能。当前唯一前置门禁是恢复 UART 可读文本，然后执行已经存在的 STA/HTTP/TPU 真板验收。
+不要先增加新功能。
+
+> **更新（2026-09-25 04:50）：UART 物理门禁已通过。**
+> 现场把 CH340 TXD/RXD 接正后，RESET 取得 `23,107` 字节 `UART_TEXT` 启动日志，证据见 §5.5。
+> 下一步是直接执行 §6.3 的产品启动器；**不需要恢复 SD 卡根文件系统**（原因见 §5.6）。
 
 ## 1. 项目目标与范围
 
@@ -107,6 +111,8 @@ HTTP 契约是：
 
 ### 4.2 当前仍未由真板证明
 
+真板 U-Boot 已确认可工作，并已进入出厂 Linux（证据见 §5.5）；但下列各项仍缺本轮 ArceOS 证据：
+
 - 本轮 ArceOS 镜像确实由 U-Boot 跳转；
 - AIC8800 固件启动；
 - WPA2 controlled-port 打开；
@@ -129,15 +135,15 @@ HTTP 契约是：
 
 用户在项目复诊 Session 中确认 CH340 的 TXD/RXD 原来接反。此时 CH340 RXD 落在板子 RX 输入脚上，接收端没有发送源，采到的是稳定可复现的干扰，而不是 SoC UART 输出。
 
-### 5.3 最新物理状态
+### 5.3 排查过程（历史记录，已于 04:45 结束）
 
-- CH340 当前由 Windows 识别为 `COM3`；
-- 改线后曾连续出现三份 0 字节日志；
-- 重新插回适配器后，噪声重新出现；
-- `check-033212.raw.log` 为 1,503 字节 `NON_TEXT_SIGNAL`；
-- 2026-09-25 04:05 的最新空闲采集 `idle-20260925-040507.raw.log` 为 800 字节，`msb_ratio=0.624`，仍是 `NON_TEXT_SIGNAL`。
+- CH340 由 Windows 识别为 `COM3`；
+- 04:20 只拔 RXD（USB 与 GND 不动）→ 采集 0 字节，`NO_DATA`；
+- 04:25 接回后非文本信号返回；
+- 04:30 USB 重新插拔 → 采集 0 字节；
+- 04:33 全部接回后再次为 `NON_TEXT_SIGNAL`（1,485 字节）。
 
-所以不能把“历史接反原因已找到”写成“当前链路已恢复”。当前接线仍需要现场重新确认。
+这一段的判别价值在于：**非文本信号随接线动作出现或消失**，说明它由接线状态产生，不是 SoC 的 UART 输出。当时记录的“当前接线仍需现场确认”已于 04:45 结束，见 §5.5。
 
 ### 5.4 正确的判定流程
 
@@ -148,6 +154,38 @@ HTTP 契约是：
 5. 板子上电，做 15 秒空闲采集；
 6. 若为 `NO_DATA`，不要立刻判成功或失败；保持接线，按一次 RESET，再采 30 秒；
 7. 只有 `line_state=UART_TEXT` 才进入产品启动器。
+
+> 该流程已于 2026-09-25 04:45 走通。
+
+### 5.5 UART 链路已恢复（2026-09-25 04:45，门禁通过）
+
+现场按 §5.4 把 CH340 的 TXD/RXD 接正后，用户按一次 RESET 取得完整启动日志：
+
+| 项 | 值 |
+| --- | --- |
+| 原始日志 | `artifacts/uart/licheerv-nano-restored-boot-20260925-044448.raw.log` |
+| 大小 | `23,107` 字节 |
+| SHA-256 | `7c94ecc5d2d57987f875e2afeab5a56271744bae1c472a8637b17cdf67ea88f4` |
+| 分类 | `line_state=UART_TEXT`、`msb_ratio=0.05`、`printable_ratio=0.94` |
+| 内容标记 | `U-Boot 2021.10`、`Loading Environment`、`Starting kernel`、`Linux version 5.10.4-tag-` |
+| 时间线 | `--scan-logs` 的 `LAST_READABLE_TEXT` 由 `2026-09-14 23:48:44` 推进到 `2026-09-25 04:45:41` |
+
+**UART 物理门禁通过。** 回归窗口闭合：09-14 之后 TX/RX 被接反，09-25 起该线一直是悬空干扰；接回正确后立即恢复可读文本。
+
+### 5.6 缺 SD 卡根文件系统不阻塞本门禁
+
+本次启动日志同时暴露一个新情况：TF 卡只有 `mmcblk0p1`（FAT32 启动分区），没有 `mmcblk0p2` 根文件系统，出厂 Linux 因此进入 USB 大容量存储恢复循环。
+
+**这与 ArceOS 产品门禁无关。** 已核实 `send_arceos_xmodem.py` 的引导路径：
+
+```text
+LOAD_ADDRESS = 0x8020_0000
+U-Boot 提示符 → XMODEM 把镜像送进内存 → go 0x80200000
+```
+
+ArceOS 产品镜像与 AIC8800 固件全部经串口送入内存，不读 SD 卡第二分区，也不启动 Linux。
+
+因此：**不要为了本门禁重新写入整卡镜像。** `mmcblk0p1` 与 U-Boot 当前可用，写入整卡镜像有覆盖它们的风险。缺根文件系统只影响板端 Linux 基线（GC4653 摄像头等，见 §1.2），不属于当前门禁。
 
 ## 6. 精确执行命令
 
@@ -178,6 +216,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 启动器提示 `Press RESET once` 后只按一次 RESET。Wi-Fi 凭据在隐藏提示中输入。
 
+该启动器不依赖 SD 卡根文件系统（§5.6）：ArceOS 镜像与 AIC8800 固件都经串口送入内存。
+
 ### 6.4 产品 URL 出现后运行门禁
 
 ```powershell
@@ -200,6 +240,9 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 | `python3 tools/sg2002/test_verify_mushroom_web.py` | 16 项通过 |
 | `test_run_arceos_licheerv_nano.ps1` | `SG2002 launcher validation PASS` |
 | `git diff --check`（Skill 提示修复提交前） | 通过 |
+| `--scan-logs artifacts/uart` | 7 份文件；`LAST_READABLE_TEXT = 2026-09-25 04:45:41`（`UART_TEXT`，23,107 字节） |
+| `--diagnose-log` 恢复日志 | `line_state=UART_TEXT`，`msb_ratio=0.05`，`printable_ratio=0.94` |
+| `git ls-remote personal` | 远端与本地同为 `35dee2e`，无未推送提交 |
 
 项目复诊 Session 还记录了 179 项 Cargo 测试、15 个构建目标和完整产品回归通过；这些属于该 Session 的既有证据，不替代下一次改代码后的重新验证，也不替代真板门禁。
 
@@ -223,7 +266,7 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 
 当前阶段只有同时得到以下证据才能结束：
 
-- 新 UART 原始日志为 `UART_TEXT`；
+- 新 UART 原始日志为 `UART_TEXT`；**已满足**（§5.5）
 - 产品启动日志包含 AIC8800 固件、WPA2、DHCP 和 `MUSHROOM_WEB_URL`；
 - `/health` 验证通过；
 - 有效推理返回 JSON；
