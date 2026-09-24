@@ -150,3 +150,23 @@
 - 结果：文档更新与本条同批提交；`git status` 干净，已推送到 `personal/codex/sg2002-phone-tpu`。
 - 下一步：执行 `tools/sg2002/run_arceos_licheerv_nano.ps1` 启动产品镜像；出现 `MUSHROOM_WEB_URL`
   后运行 `verify_mushroom_web.py`。**在此之前不要写整卡镜像恢复 `mmcblk0p2`。**
+
+### 05:12 +08:00 — 修复启动器依赖缺失（sender 从未进入权威仓库）
+
+- 观察：用户在 PowerShell 执行文档给出的启动器命令，立即报错
+  `XMODEM sender was not found. Pass its exact path with -SenderPath: ...\tools\sg2002\send_arceos_xmodem.py`。
+- 判断依据：`ls tools/sg2002/` 与 `git log --all -- "*send_arceos_xmodem.py"` 确认该文件**从未被纳入权威仓库**。
+  它只存在于外层工作区 `C:\Users\chen\Documents\ArcOS移植sg2002\send_arceos_xmodem.py`，
+  而外层目录是一个**没有配置任何 remote 的本地 `master` 仓库**，因此权威工作树取不到这个工具。
+  另外 `send_arceos_xmodem.py` 的默认固件目录是 `<sender 同级>/.local-firmware`，仓库内同样没有该目录。
+- 动作：
+  1. 把 `send_arceos_xmodem.py`（23,761 字节）与其单元测试 `test_send_arceos_xmodem.py`（11,689 字节）
+     从外层复刻进 `tools/sg2002/`，保持 LF 换行；
+  2. 把 AIC8800 固件 5 个文件复刻到 `tools/sg2002/.local-firmware/`。该目录已被
+     `.gitignore:17 '`.local-firmware/`'` 忽略，符合仓库“绝不提交本地专有固件”的既定策略；
+  3. 复刻启动器自身的固件清单校验，并运行 sender 单元测试。
+- 结果：启动器前置校验（sender + 固件）**全部通过**——5 个固件文件长度与 SHA-256 全部匹配；
+  `test_send_arceos_xmodem.py` **25 项通过**。`git status` 只显示两个新增源码文件，固件未进入版本控制。
+  提交 `166c108 tools: add the XMODEM sender the launcher already depends on`。
+- 下一步：由用户在**自己的 PowerShell** 里执行启动器命令。Wi-Fi 凭据是隐藏交互输入，
+  只能在用户终端里输入，无法由 Agent 代跑；提示 `Press RESET once` 时按一次 RESET。
