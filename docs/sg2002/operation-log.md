@@ -209,3 +209,27 @@
 - 下一步：用户在自己终端执行启动器；传镜像期间不要中断。出现 `MUSHROOM_WEB_URL` 后跑
   `verify_mushroom_web.py`。若 `read_until(b"soph#")` 超时，说明空格没有及时打断 autoboot，
   应把打断动作提前或增大 autoboot 延时——这是当前唯一未在本轮真板复现的环节。
+
+### 05:10:29 +08:00 — 用户首次把启动器推进到 XMODEM 传输
+
+- 观察：用户在 PowerShell 执行启动器，产出
+  `tools/sg2002/logs/mushroom-web-sta-board-20260925-051029.log`（24,656 字节，UTF-16LE 编码）。
+- 判断依据：解码该日志得到完整阶段序列——
+  `sending ...\mushroom-web-licheerv-nano_riscv64-licheerv-nano.bin (8212544 bytes) to 0x80200000`
+  → `waiting for U-Boot; reset the board now`（此时板子仍在出厂 Linux 恢复循环里输出 busybox iostat）
+  → 第 590 行 `U-Boot 2021.10 (Jan 22 2026 - 14:08:22 +0800) soph`（用户按了 RESET）
+  → 第 616 行 `soph# U-Boot prompt detected`
+  → 第 617 行 `starting U-Boot loadx`
+  → 第 618 行 `XMODEM CRC handshake detected`。
+- 动作：**不触碰 COM3**（sender 正持有端口）。改用非侵入方式判定活性：进程 CPU 计数变化、
+  以及尝试打开 COM3 看是否被占用。
+- 结果：
+  - PID 40712（`python`，sender）CPU 由 `2.28s` 增至 `2.50s`（间隔 8 秒采样）；
+  - PID 42124（`py` 包装进程）CPU 静止在 `0.02s`，在等待；
+  - 打开 `COM3` 抛 `Access to the port 'COM3' is denied`，确认端口被 sender 持有。
+  → 判定 **XMODEM 传输正在进行中**。日志在 05:10:48 之后不再增长，是 Python stdout 经
+  `Tee-Object` 管道时采用块缓冲所致，**不是卡死**。
+  按 §6.3 的估算（8,021 个包），预计 `05:25`–`05:29` 完成传输。
+- 下一步：等待传输完成。完成后 sender 会先送 AIC8800 固件，再在隐藏提示里要求输入
+  Wi-Fi SSID 与密码——**必须在该终端内输入**。之后等待 `MUSHROOM_WEB_URL`。
+  传输期间不要拔线、不要按 RESET、不要另开串口监视器（会抢 COM3）。
