@@ -141,18 +141,39 @@ if ($CaptureSeconds -gt 0) {
     $capturePort = [System.IO.Ports.SerialPort]::new($serialPortName, 115200)
     $capturePort.ReadTimeout = 100
     $capturePort.Open()
+    $captureBuffer = New-Object byte[] 4096
+    $logStream = $null
+    $standardOutput = [Console]::OpenStandardOutput()
     try {
+        $logStream = [System.IO.File]::Open(
+            $LogPath,
+            [System.IO.FileMode]::Append,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::ReadWrite)
         $captureDeadline = [DateTime]::UtcNow.AddSeconds($CaptureSeconds)
         while ([DateTime]::UtcNow -lt $captureDeadline) {
-            $chunk = $capturePort.ReadExisting()
-            if (-not [string]::IsNullOrEmpty($chunk)) {
-                Write-Host -NoNewline $chunk
-                [System.IO.File]::AppendAllText($LogPath, $chunk, [System.Text.Encoding]::UTF8)
+            $read = 0
+            try {
+                $read = $capturePort.Read($captureBuffer, 0, $captureBuffer.Length)
             }
-            Start-Sleep -Milliseconds 20
+            catch [System.TimeoutException] {
+                $read = 0
+            }
+            if ($read -gt 0) {
+                # Evidence has to stay byte-exact, so raw bytes are forwarded
+                # verbatim. Never route this through a decoded string: a non-text
+                # signal would be silently rewritten and the log would lie.
+                $logStream.Write($captureBuffer, 0, $read)
+                $logStream.Flush()
+                $standardOutput.Write($captureBuffer, 0, $read)
+                $standardOutput.Flush()
+            }
         }
     }
     finally {
+        if ($null -ne $logStream) {
+            $logStream.Dispose()
+        }
         $capturePort.Close()
         $capturePort.Dispose()
     }
