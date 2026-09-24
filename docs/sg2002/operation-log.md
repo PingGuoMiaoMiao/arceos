@@ -135,3 +135,18 @@
 - 结果：认定缺根文件系统只影响板端 Linux 基线（GC4653 摄像头等，见 `HANDOFF.md` §1.2），
   不属于 STA 产品门禁；不覆盖当前可用的 `mmcblk0p1` 与 U-Boot。
 - 下一步：直接执行产品启动器；取得 `MUSHROOM_WEB_URL` 后运行 `verify_mushroom_web.py`。
+
+### 05:05 +08:00 — 交接文档补全与实时记录约定
+
+- 观察：用户要求交接文档必须让其他 AI 直接看懂，并要求实时记录思考依据与对应操作。
+  用户同时贴出一份项目摘要，其中称“当前阻塞在 UART 物理链路、最新 `check-033212.raw.log` 仍为
+  1,503 字节 `NON_TEXT_SIGNAL`、最新提交 `b81e17c`”。
+- 判断依据：核对 `git rev-parse --short HEAD`、`git log`、`git ls-remote personal` 与
+  `--scan-logs artifacts/uart`。该摘要落后 4 个提交（实际 HEAD 为 `bfd2c25`），
+  且 UART 已于 04:45 恢复（`licheerv-nano-restored-boot-20260925-044448.raw.log`，23,107 字节 `UART_TEXT`）。
+- 动作：在 `HANDOFF.md` 增补 §11「AI 操作手册」，把本次实际踩过的环境问题写成可复现条目
+  （WSL 变量展开陷阱、WSL 文件编辑方式、git 身份与凭据推送、日志目录约定、`defconfig` 顺序、
+  Python/pytest 注意事项、采集诊断命令速查、收尾验证清单）；修正 §7 中过时的远端提交号。
+- 结果：文档更新与本条同批提交；`git status` 干净，已推送到 `personal/codex/sg2002-phone-tpu`。
+- 下一步：执行 `tools/sg2002/run_arceos_licheerv_nano.ps1` 启动产品镜像；出现 `MUSHROOM_WEB_URL`
+  后运行 `verify_mushroom_web.py`。**在此之前不要写整卡镜像恢复 `mmcblk0p2`。**

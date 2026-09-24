@@ -242,7 +242,7 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 | `git diff --check`（Skill 提示修复提交前） | 通过 |
 | `--scan-logs artifacts/uart` | 7 份文件；`LAST_READABLE_TEXT = 2026-09-25 04:45:41`（`UART_TEXT`，23,107 字节） |
 | `--diagnose-log` 恢复日志 | `line_state=UART_TEXT`，`msb_ratio=0.05`，`printable_ratio=0.94` |
-| `git ls-remote personal` | 远端与本地同为 `35dee2e`，无未推送提交 |
+| `git ls-remote personal` | 远端与本地同为 `bfd2c25`，无未推送提交 |
 
 项目复诊 Session 还记录了 179 项 Cargo 测试、15 个构建目标和完整产品回归通过；这些属于该 Session 的既有证据，不替代下一次改代码后的重新验证，也不替代真板门禁。
 
@@ -275,3 +275,135 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 - 20 次请求门禁打印 `SG2002_STA_PRODUCT_GATE_PASS`；
 - 证据文件、哈希和提交号写入文档；
 - Git 工作树干净，提交已推送到 `personal/codex/sg2002-phone-tpu`。
+
+## 11. AI 操作手册（环境陷阱与可复现命令）
+
+本节记录本次 Session 实际踩到并已解决的问题。其他 AI 按本节操作，可以避免重复摸索。
+每条都对应一次真实失败，不是推测。
+
+### 11.1 从 Windows 调用 WSL 时，单引号保护不了 `$VAR`
+
+外层是 Windows shell，**`$VAR` 和 `$(...)` 会先在最外层展开**，`bash -lc '...'` 的单引号挡不住：
+
+```bash
+# 错误：$R 在进入 WSL 之前就被展开成空串，cp 报 cannot stat ''
+wsl.exe -d Ubuntu -- bash -lc 'R=/home/chen/x; cp $R/file /dest'
+
+# 正确：只用字面路径
+wsl.exe -d Ubuntu -- bash -lc 'cp /home/chen/x/file /dest'
+```
+
+**在 `wsl.exe ... bash -lc '...'` 里不要用 shell 变量和命令替换。**
+
+### 11.2 怎么改 WSL 工作树里的文件
+
+文件编辑工具在 `\\wsl.localhost\...` 路径上会报 `GetFileSecurityW EIO`。两种可用方式：
+
+1. 写到 Windows 临时目录，再拷进 WSL：
+   把内容写到 `C:\Users\chen\AppData\Local\Temp\new.ext`，然后
+   `wsl.exe -d Ubuntu -- bash -lc 'cp /mnt/c/Users/chen/AppData/Local/Temp/new.ext <目标>'`
+2. **推荐**：写一个 Python 补丁脚本，只做精确字符串替换，并断言锚点唯一，再放进 WSL 执行。
+   锚点不唯一时它会直接报错退出，不会静默改错位置。
+
+写文件时保持 LF：`Path.write_text(text, encoding="utf-8", newline="")`。
+
+### 11.3 Git：身份、提交、推送
+
+WSL 工作树**没有配置 git 身份**。本次沿用该分支既有作者：
+
+```bash
+export GIT_AUTHOR_NAME=chenyongqi GIT_AUTHOR_EMAIL=3226742838@qq.com
+export GIT_COMMITTER_NAME=chenyongqi GIT_COMMITTER_EMAIL=3226742838@qq.com
+```
+
+推送：**WSL 内的非交互推送会被拒绝**（`remote: No anonymous write access`）。
+可用的是 Windows 凭据管理器，在 Git Bash 里执行：
+
+```bash
+cd "//wsl.localhost/Ubuntu/home/chen/arceos-worktrees/sg2002-phone-tpu"
+git -c safe.directory='*' -c credential.helper=manager push personal codex/sg2002-phone-tpu
+```
+
+会打印一条 `D:\github-cli\gh.exe` 路径被反斜杠吃掉的告警，但凭据助手仍然生效，推送会成功。
+
+提交后必须核对两项：
+
+```bash
+git status --short                              # 必须为空
+git ls-remote personal codex/sg2002-phone-tpu   # 必须与本机 HEAD 一致
+```
+
+### 11.4 采集日志到底存在哪
+
+两个目录并存，采集时必须显式指定路径并记住位置：
+
+| 目录 | 内容 |
+| --- | --- |
+| `C:\Users\chen\Documents\ArcOS移植sg2002\logs` | 早期采集与历史日志 |
+| `C:\Users\chen\Documents\ArcOS移植sg2002\artifacts\uart` | 04:18 之后的真板采集 |
+
+**教训**：本次曾只扫 `logs/`，据此得出“恢复日志不存在”的错误结论，实际文件在 `artifacts/uart/`。
+排查前先用 `--scan-logs` 把两个目录都扫一遍。
+
+### 11.5 构建顺序：`defconfig` 必须在前
+
+```
+make A=<example> MYPLAT=axplat-riscv64-licheerv-nano defconfig
+make A=<example> MYPLAT=axplat-riscv64-licheerv-nano APP_FEATURES=hardware build
+```
+
+漏掉 `defconfig` 直接 `build` 会报
+`"ARCH" or "MYPLAT" has been changed, please run "make defconfig" again`。
+删掉 `.bin` 之后重建也必须按这个顺序。
+
+### 11.6 Python 与测试注意事项
+
+- 已验证解释器：`py -3.12`。
+- Windows 上跑 pytest 必须禁用插件自动加载，否则 `langsmith` 插件会因缺 `requests_toolbelt` 直接报错：
+  `set PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`
+- WSL 里没有 pytest，直接用 unittest：
+  ```bash
+  python3 tests/test_board_uart_capture_skill.py
+  python3 -m unittest discover -s tools/sg2002 -p "test_*.py"
+  ```
+- PowerShell 执行策略会拦截 `.ps1`：加 `-ExecutionPolicy Bypass`，或先
+  `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
+
+### 11.7 采集与诊断命令速查
+
+```powershell
+# 串口枚举（自动选择在多串口时会拒绝，必须显式 --port）
+py -3.12 C:\Users\chen\.codex\skills\board-uart-capture\scripts\uart_capture.py --list-ports
+
+# 只读采集，不向串口写任何字节
+py -3.12 C:\Users\chen\.codex\skills\board-uart-capture\scripts\uart_capture.py `
+  --port COM3 --baud 115200 --log <新日志路径> --duration 30
+
+# 单份信号诊断
+py -3.12 ...\uart_capture.py --diagnose-log <日志>
+
+# 两份对比：判定是否同一条信号
+py -3.12 ...\uart_capture.py --compare-logs <A> <B>
+
+# 目录时间线：找最后一次可读采集，框定回归窗口
+py -3.12 ...\uart_capture.py --scan-logs <目录>
+```
+
+判读要点：
+
+- 真实 ASCII 文本第 8 位恒为 0，所以 `msb_ratio > 0.02` 就**不可能**是波特率错配的文本；
+- 同一条信号的两次快照，`bit_profile` 的 L1 距离通常 `< 0.05`；可读文本与非文本流之间 `> 0.5`；
+- `NO_DATA`（0 字节）**不等于故障**：正确接线的空闲 UART TX 也是 0 字节，必须再按一次 RESET 采集才算判据完整。
+
+### 11.8 每次收尾的验证清单
+
+```bash
+cd /home/chen/arceos-worktrees/sg2002-phone-tpu
+python3 tests/test_board_uart_capture_skill.py                 # 9 项
+python3 -m unittest discover -s tools/sg2002 -p "test_*.py"    # 16 项
+git diff --check                                               # 空白检查
+git status --short                                             # 必须为空
+git ls-remote personal codex/sg2002-phone-tpu                  # 与 HEAD 一致
+```
+
+真板侧另外还要跑 `test_run_arceos_licheerv_nano.ps1`，预期输出 `SG2002 launcher validation PASS`。
