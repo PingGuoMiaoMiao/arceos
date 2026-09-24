@@ -1,4 +1,6 @@
 import importlib.util
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -94,6 +96,40 @@ class BoardUartCaptureSkillTests(unittest.TestCase):
         self.assertIn("bit_profile=b0=", report)
         self.assertIn("msb_ratio=", report)
 
+    def test_scan_logs_orders_by_time_and_reports_the_last_readable_capture(self):
+        module = load_capture_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            readable = root / "early-board.raw.log"
+            broken = root / "late-board.raw.log"
+            readable.write_bytes(BOOT_TEXT * 2)
+            broken.write_bytes(MANGLED_LINE * 8)
+            os.utime(readable, (1_700_000_000, 1_700_000_000))
+            os.utime(broken, (1_700_000_500, 1_700_000_500))
+
+            report = module.scan_logs(root)
+
+        self.assertIn("SIGNAL_TIMELINE", report)
+        self.assertIn("files=2", report)
+        self.assertIn("UART_TEXT", report)
+        self.assertIn("NON_TEXT_SIGNAL", report)
+        # Ordered by capture time, oldest first.
+        self.assertLess(
+            report.index("early-board.raw.log"), report.index("late-board.raw.log")
+        )
+        # The newest readable capture wins, not the newest file on disk.
+        self.assertIn("LAST_READABLE_TEXT file=early-board.raw.log", report)
+
+    def test_scan_logs_handles_a_directory_without_readable_captures(self):
+        module = load_capture_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "only-broken.raw.log").write_bytes(MANGLED_LINE * 8)
+            report = module.scan_logs(root)
+
+        self.assertIn("files=1", report)
+        self.assertIn("LAST_READABLE_TEXT none", report)
+
     def test_skill_requires_ready_gate_and_preserves_evidence(self):
         text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("name: board-uart-capture", text)
@@ -103,6 +139,7 @@ class BoardUartCaptureSkillTests(unittest.TestCase):
         self.assertIn("不得猜测", text)
         self.assertIn("--diagnose-log", text)
         self.assertIn("--compare-logs", text)
+        self.assertIn("--scan-logs", text)
 
 
 if __name__ == "__main__":

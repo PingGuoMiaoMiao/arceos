@@ -27,8 +27,17 @@ description: Use when a Windows host must identify a USB-TTL adapter such as CH3
 2. 真实 ASCII 文本的 `b7`（第 8 位）恒为 0，因此 `msb_ratio` 明显大于 `0.02` 就**不可能是波特率错配的文本**。
 3. 若 `line_state=NON_TEXT_SIGNAL`，停止调波特率，改为逐项核对：共地、TX/RX 是否接反、逻辑电平（TTL 与 RS-232 是否混用）、以及板卡是否真的进入了会打印的阶段（供电、复位、启动介质、启动模式跳线）。
 4. 用 `--compare-logs <已知可读日志> <可疑日志>` 对比指纹。`verdict=DIFFERENT_SIGNAL` 说明两者不是同一条信号，不能继续沿用旧接线假设；`verdict=SAME_SIGNAL` 说明是同一条稳定信号，可跨采集复现。
+5. 用 `--scan-logs <日志目录>` 找出**最后一次可读**的采集，从而框定回归窗口：问题是在哪两次采集之间出现的。
 
 指纹是稳定量：同一条信号在不同时间采集的两次快照，其 `bit_profile` 之间 L1 距离通常低于 `0.05`，而可读文本与乱码流之间会超过 `0.5`。
+
+### 区分“接线问题”与“板子启动问题”
+
+当按 RESET 前后信号指纹相同、且全文最长连续 ASCII 只有个位数时，该信号**不是 SoC 的 UART 输出**（复位至少会带来某种变化）。此时唯一的分支判据是：
+
+- **只拔掉适配器的 RX 信号线**（USB 与 GND 保持不动），再采一次；
+- 信号仍在 → 引脚悬浮拾取干扰，查接线、共地、针脚；
+- 信号消失 → 板子确实在驱动该线，查启动介质与启动模式。
 
 ## Commands
 
@@ -40,9 +49,10 @@ py -3.12 scripts/uart_capture.py --port COM3 --baud 115200 --log C:\path\board-r
 py -3.12 scripts/uart_capture.py --analyze-log C:\path\board-reset.raw.log
 py -3.12 scripts/uart_capture.py --diagnose-log C:\path\board-reset.raw.log
 py -3.12 scripts/uart_capture.py --compare-logs C:\path\known-good.raw.log C:\path\board-reset.raw.log
+py -3.12 scripts/uart_capture.py --scan-logs C:\path\to\logs
 ```
 
-上述三种分析命令全部只读，不会打开或写入串口。`py -3.12` 只是当前主机已经验证的解释器。其他主机先运行 `py -0p`，再逐个使用输出中的准确解释器路径验证 `import serial`。
+上述分析命令（`--analyze-log`、`--diagnose-log`、`--compare-logs`、`--scan-logs`）全部只读，不会打开或写入串口。`py -3.12` 只是当前主机已经验证的解释器。其他主机先运行 `py -0p`，再逐个使用输出中的准确解释器路径验证 `import serial`。
 
 ## Quick Reference
 
@@ -67,3 +77,4 @@ py -3.12 scripts/uart_capture.py --compare-logs C:\path\known-good.raw.log C:\pa
 - 忽略蓝牙虚拟串口，自动选择了错误 COM 口。
 - 把 TTL 串口与 RS-232 电平混用，或在板卡独立供电时同时连接 VCC。
 - 把“收到连续字节流”当成“波特率没对上”，于是反复换波特率，而不去查共地、接线和启动状态。
+- 只根据最新一份日志下结论，不去用 `--scan-logs` 确认最后一次可读采集发生在什么时候。

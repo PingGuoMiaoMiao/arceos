@@ -169,6 +169,43 @@ def compare_captures(
     )
 
 
+def scan_logs(directory: Path) -> str:
+    """Diagnose every capture in a directory and order them by modification time.
+
+    Answers the question the single-file commands cannot: when did this board
+    last produce readable text, and therefore where does the regression window
+    start?
+    """
+    entries = []
+    for path in sorted(directory.iterdir()):
+        if not path.is_file():
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        entries.append((path.stat().st_mtime, path.name, diagnose_capture(data)))
+    entries.sort(key=lambda item: (item[0], item[1]))
+
+    lines = [f"SIGNAL_TIMELINE directory={directory} files={len(entries)}"]
+    for mtime, name, report in entries:
+        stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
+        lines.append(
+            f"  {stamp}  {name[:44]:<44} {report['bytes']:>7} "
+            f"{str(report['state']):<17} {report['msb_ratio']:.2f} "
+            f"{report['printable_ratio']:.2f}"
+        )
+
+    readable = [item for item in entries if item[2]["state"] == "UART_TEXT"]
+    if readable:
+        mtime, name, _ = readable[-1]
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+        lines.append(f"LAST_READABLE_TEXT file={name} mtime={stamp}")
+    else:
+        lines.append("LAST_READABLE_TEXT none")
+    return "\n".join(lines)
+
+
 def select_port(port_names: Iterable[str]) -> str:
     names = list(port_names)
     if not names:
@@ -255,6 +292,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--analyze-log", type=Path)
     parser.add_argument("--diagnose-log", type=Path)
+    parser.add_argument("--scan-logs", type=Path)
     parser.add_argument(
         "--compare-logs",
         nargs=2,
@@ -269,6 +307,12 @@ def main() -> int:
     args = parse_args()
     if args.list_ports:
         return print_ports()
+    if args.scan_logs is not None:
+        if not args.scan_logs.is_dir():
+            print(f"NOT_A_DIRECTORY path={args.scan_logs}", file=sys.stderr)
+            return 2
+        print(scan_logs(args.scan_logs))
+        return 0
     if args.compare_logs is not None:
         first_path, second_path = args.compare_logs
         first = first_path.read_bytes()
