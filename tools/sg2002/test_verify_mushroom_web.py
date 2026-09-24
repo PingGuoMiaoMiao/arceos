@@ -18,6 +18,22 @@ from verify_mushroom_web import (
 )
 
 
+def good_inference_body(metadata, request_id):
+    return {
+        "request_id": request_id,
+        "model": MODEL_NAME,
+        "image": {"width": metadata.source_width, "height": metadata.source_height},
+        "detections": [],
+        "timing_us": {
+            "receive": 1,
+            "quantize": 2,
+            "tpu": 3,
+            "postprocess": 4,
+            "total": 10,
+        },
+    }
+
+
 class EnvelopeTests(unittest.TestCase):
     def test_builds_the_exact_phone_image_envelope(self):
         payload = bytes((index & 0xFF) for index in range(PAYLOAD_LENGTH))
@@ -106,6 +122,115 @@ class GateTests(unittest.TestCase):
         self.assertEqual(report["first_request_id"], 9)
         self.assertEqual(report["last_request_id"], 28)
         self.assertEqual(report["input_crc32"], f"{zlib.crc32(payload):08x}")
+
+
+class GateRejectionTests(unittest.TestCase):
+    """A gate that cannot fail proves nothing, so every guard needs a negative test.
+
+    Each of these would otherwise let a board that never implemented the contract
+    print SG2002_STA_PRODUCT_GATE_PASS.
+    """
+
+    def setUp(self):
+        self.metadata = InputMetadata(263, 191, 640, 464, 0, 88)
+        self.payload = bytes(PAYLOAD_LENGTH)
+        self.envelope = build_envelope(self.payload, self.metadata)
+        self.ids = iter(range(1, 500))
+
+    def transport(
+        self,
+        *,
+        health=None,
+        health_status=200,
+        invalid_crc_status=400,
+        invalid_crc_code="INVALID_ENVELOPE",
+        ids=None,
+        mutate=None,
+    ):
+        def build(method, path, body, headers):
+            if path == "/health":
+                return health_status, (
+                    health
+                    if health is not None
+                    else {"wifi": "DhcpBound", "tpu": "Ready", "model": MODEL_NAME}
+                )
+            incoming_crc = struct.unpack_from("<I", body, 36)[0]
+            if incoming_crc != zlib.crc32(body[HEADER_LENGTH:]):
+                return invalid_crc_status, {
+                    "error": {"code": invalid_crc_code, "message": "rejected"}
+                }
+            response = good_inference_body(self.metadata, next(ids if ids else self.ids))
+            if mutate is not None:
+                mutate(response)
+            return 200, response
+
+        return build
+
+    def gate(self, **kwargs):
+        return run_gate(self.transport(**kwargs), self.envelope, self.metadata, 3)
+
+    def test_accepts_a_fully_correct_board(self):
+        # Anchors every negative test below: the same factory must pass when the
+        # board really honours the contract.
+        report = self.gate()
+        self.assertEqual(report["request_count"], 3)
+        self.assertEqual(report["first_request_id"], 1)
+        self.assertEqual(report["last_request_id"], 3)
+
+    def test_rejects_a_health_response_with_the_wrong_model(self):
+        with self.assertRaisesRegex(RuntimeError, "health response mismatch"):
+            self.gate(
+                health={"wifi": "DhcpBound", "tpu": "Ready", "model": "someone_else"}
+            )
+
+    def test_rejects_a_health_response_that_is_not_ok(self):
+        with self.assertRaisesRegex(RuntimeError, "health returned HTTP 503"):
+            self.gate(health_status=503)
+
+    def test_rejects_a_board_that_accepts_a_corrupted_checksum(self):
+        with self.assertRaisesRegex(RuntimeError, "invalid CRC returned HTTP 200"):
+            self.gate(invalid_crc_status=200, invalid_crc_code="OK")
+
+    def test_rejects_the_wrong_error_code_for_a_corrupted_checksum(self):
+        with self.assertRaisesRegex(RuntimeError, "error code mismatch"):
+            self.gate(invalid_crc_code="SOMETHING_ELSE")
+
+    def test_rejects_non_consecutive_request_ids(self):
+        with self.assertRaisesRegex(RuntimeError, "not consecutive"):
+            self.gate(ids=iter([1, 5, 6]))
+
+    def test_rejects_an_inference_response_with_the_wrong_model(self):
+        with self.assertRaisesRegex(RuntimeError, "inference model mismatch"):
+            self.gate(mutate=lambda body: body.update(model="someone_else"))
+
+    def test_rejects_an_inference_response_with_the_wrong_image_shape(self):
+        with self.assertRaisesRegex(RuntimeError, "image metadata mismatch"):
+            self.gate(
+                mutate=lambda body: body.update(image={"width": 1, "height": 1})
+            )
+
+    def test_rejects_an_inference_response_without_timing(self):
+        with self.assertRaisesRegex(RuntimeError, "timing_us must be an object"):
+            self.gate(mutate=lambda body: body.update(timing_us=None))
+
+    def test_rejects_an_inference_response_with_a_negative_timing_field(self):
+        def damage(body):
+            body["timing_us"]["tpu"] = -1
+
+        with self.assertRaisesRegex(RuntimeError, "timing field tpu is invalid"):
+            self.gate(mutate=damage)
+
+    def test_rejects_an_inference_response_with_an_invalid_request_id(self):
+        with self.assertRaisesRegex(RuntimeError, "request_id is invalid"):
+            self.gate(mutate=lambda body: body.update(request_id=0))
+
+    def test_rejects_an_inference_response_whose_detections_are_not_a_list(self):
+        with self.assertRaisesRegex(RuntimeError, "detections must be a list"):
+            self.gate(mutate=lambda body: body.update(detections={}))
+
+    def test_requires_at_least_two_requests(self):
+        with self.assertRaisesRegex(ValueError, "at least two"):
+            run_gate(self.transport(), self.envelope, self.metadata, 1)
 
 
 if __name__ == "__main__":
