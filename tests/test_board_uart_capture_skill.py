@@ -71,7 +71,12 @@ class BoardUartCaptureSkillTests(unittest.TestCase):
         # The hint must steer away from blind baud-rate sweeps.
         self.assertIn("baud", mangled["hint"])
 
-        self.assertEqual(module.diagnose_capture(b"")["state"], "NO_DATA")
+        idle = module.diagnose_capture(b"")
+        self.assertEqual(idle["state"], "NO_DATA")
+        self.assertEqual(idle["bytes"], 0)
+        # A correctly wired idle UART TX reads as NO_DATA too, so the hint must
+        # not present an idle line as a fault on its own.
+        self.assertIn("idle UART TX", idle["hint"])
 
     def test_signal_comparison_separates_one_line_from_another(self):
         module = load_capture_module()

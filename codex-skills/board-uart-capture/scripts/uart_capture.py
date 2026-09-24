@@ -94,8 +94,11 @@ def diagnose_capture(data: bytes) -> dict[str, object]:
     if not data:
         state = "NO_DATA"
         hint = (
-            "no bytes arrived; the line stayed idle. Check power, GND, TX/RX "
-            "and the reset action."
+            "no bytes arrived; the line stayed idle. A correctly wired, powered"
+            " and idle UART TX reads exactly the same way, so this alone is not"
+            " a fault: keep the wiring, press RESET once and capture again."
+            " Only if a reset still prints nothing, check power, GND and whether"
+            " the adapter RXD really sits on the board TX pin."
         )
     elif classification == "TEXT":
         state = "UART_TEXT"
