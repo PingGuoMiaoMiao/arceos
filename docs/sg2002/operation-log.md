@@ -170,3 +170,18 @@
   提交 `166c108 tools: add the XMODEM sender the launcher already depends on`。
 - 下一步：由用户在**自己的 PowerShell** 里执行启动器命令。Wi-Fi 凭据是隐藏交互输入，
   只能在用户终端里输入，无法由 Agent 代跑；提示 `Press RESET once` 时按一次 RESET。
+
+### 05:15 +08:00 — 修复启动器不跑 defconfig 的自洽性缺陷
+
+- 观察：修好 sender 缺失后继续预检，发现 `.axconfig.toml` 仍指向 `riscv64-qemu-virt`
+  （此前跑产品回归构建了 qemu 示例留下），而启动器的构建命令只有 `make build`。
+- 判断依据：直接执行启动器用的那条命令，得到
+  `Makefile:181: *** "ARCH" or "MYPLAT" has been changed, please run "make defconfig" again.  Stop.`
+  说明启动器依赖工作树"碰巧"已配置成目标平台，不自洽。
+- 动作：把启动器的构建命令改为先 `defconfig` 再 `build`，顺序与
+  `tools/sg2002/test_product_regression.sh` 既有做法一致；并在
+  `test_run_arceos_licheerv_nano.ps1` 增加"必须包含 defconfig"的回归守卫。
+- 结果：修复后的完整命令构建成功，产出 8,212,544 字节产品镜像；
+  启动器测试仍为 `SG2002 launcher validation PASS`。
+  提交 `a998957 fix(tools): configure the worktree before the launcher builds it`。
+- 下一步：用户在自己终端执行启动器；提示 `Press RESET once` 时按一次 RESET，隐藏提示里输入 Wi-Fi 凭据。
