@@ -30,6 +30,17 @@ class BoardUartCaptureSkillTests(unittest.TestCase):
             "UNREADABLE",
         )
 
+    def test_mixed_early_noise_and_later_boot_text_is_text(self):
+        module = load_capture_module()
+        early_noise = bytes.fromhex("43f9b3a8aa097ab0f95794a92585b1ae") * 8
+        later_text = (
+            b"U-Boot 2021.10\r\n"
+            b"DRAM: 254 MiB\r\n"
+            b"Starting kernel ...\r\n"
+            b"Welcome to Linux\r\n"
+        )
+        self.assertEqual(module.classify_capture(early_noise + later_text), "TEXT")
+
     def test_port_selection_requires_an_unambiguous_result(self):
         module = load_capture_module()
         self.assertEqual(module.select_port(["COM3"]), "COM3")

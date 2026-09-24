@@ -18,6 +18,17 @@ def classify_capture(data: bytes) -> str:
     if not data:
         return "NO_DATA"
 
+    longest_ascii_run = 0
+    current_ascii_run = 0
+    for byte in data:
+        if byte in (9, 10, 13) or 32 <= byte <= 126:
+            current_ascii_run += 1
+            longest_ascii_run = max(longest_ascii_run, current_ascii_run)
+        else:
+            current_ascii_run = 0
+    if longest_ascii_run >= 64:
+        return "TEXT"
+
     text = data.decode("utf-8", errors="replace")
     replacement_ratio = text.count("\ufffd") / max(len(text), 1)
     readable = sum(char.isprintable() or char in "\r\n\t" for char in text)
