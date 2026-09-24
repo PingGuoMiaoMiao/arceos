@@ -366,6 +366,15 @@ make A=<example> MYPLAT=axplat-riscv64-licheerv-nano APP_FEATURES=hardware build
   python3 tests/test_board_uart_capture_skill.py
   python3 -m unittest discover -s tools/sg2002 -p "test_*.py"
   ```
+- **WSL 的 `python3` 没有 `xmodem` 和 `paramiko`。** 所以上面这条 discover 会在
+  `test_send_arceos_xmodem.py` 上报 `ModuleNotFoundError: No module named 'xmodem'`，
+  结果是 **16 项通过 + 1 项 error**。这是环境差异，不是代码缺陷——不要为此改 sender 的 import。
+  sender 测试必须用 Windows 的解释器跑：
+
+  ```powershell
+  set PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+  py -3.12 -m pytest tools\sg2002\test_send_arceos_xmodem.py -q   # 25 项通过
+  ```
 - PowerShell 执行策略会拦截 `.ps1`：加 `-ExecutionPolicy Bypass`，或先
   `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
 
@@ -397,13 +406,22 @@ py -3.12 ...\uart_capture.py --scan-logs <目录>
 
 ### 11.8 每次收尾的验证清单
 
+在 WSL 里：
+
 ```bash
 cd /home/chen/arceos-worktrees/sg2002-phone-tpu
-python3 tests/test_board_uart_capture_skill.py                 # 9 项
-python3 -m unittest discover -s tools/sg2002 -p "test_*.py"    # 16 项
-git diff --check                                               # 空白检查
-git status --short                                             # 必须为空
-git ls-remote personal codex/sg2002-phone-tpu                  # 与 HEAD 一致
+python3 tests/test_board_uart_capture_skill.py                       # 9 项
+python3 -m unittest discover -s tools/sg2002 -p "test_verify_*.py"   # 16 项
+git diff --check                                                     # 空白检查
+git status --short                                                   # 必须为空
+git ls-remote personal codex/sg2002-phone-tpu                        # 与 HEAD 一致
+```
+
+在 Windows 里（WSL 缺依赖，见 §11.6）：
+
+```powershell
+set PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+py -3.12 -m pytest tools\sg2002\test_send_arceos_xmodem.py -q      # 25 项
 ```
 
 真板侧另外还要跑 `test_run_arceos_licheerv_nano.ps1`，预期输出 `SG2002 launcher validation PASS`。
