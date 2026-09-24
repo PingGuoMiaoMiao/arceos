@@ -86,3 +86,11 @@
 - 动作：执行 UTF-8/空字节检查、`git diff --cached --check`，提交五份文档并通过 Windows GitHub 凭据推送。
 - 结果：提交 `4377112 docs: add SG2002 session and project handoff` 已推送到 `personal/codex/sg2002-phone-tpu`；远端在推送后指向该提交。
 - 下一步：重新运行最终验证并确认工作树与远端一致；随后等待正确接线后的 RESET 操作。
+
+### 04:05:07 +08:00 — 当前线路空闲采集
+
+- 观察：Windows 枚举 `USB-SERIAL CH340 (COM3)`，需要确认重新插线后的实际信号状态。
+- 判断依据：空闲采集不会向串口写数据，可在不触发启动流程的情况下判断线路是否仍有非文本信号。
+- 动作：在 COM3、115200 波特率下只读采集 15 秒，保存为 `logs/idle-20260925-040507.raw.log`。
+- 结果：收到 800 字节；`line_state=NON_TEXT_SIGNAL`；`printable_ratio=0.326`；`msb_ratio=0.624`；`ascii_run_max=4`；`bit_profile=b0=0.604 b1=0.405 b2=0.422 b3=0.391 b4=0.464 b5=0.519 b6=0.455 b7=0.624`。与此前悬空干扰特征一致，当前不能运行产品启动器。
+- 下一步：只拔掉 CH340 RXD 信号线，USB 与 GND 保持不动，再采一次；根据信号是否消失区分接收端悬空与板端驱动。

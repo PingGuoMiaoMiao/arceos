@@ -100,7 +100,7 @@
 
 ## 5. 当前失败点
 
-`licheerv-nano-full-boot-20260925-021046.raw.log` 收到 `23,326` 字节，升级后的诊断结果是 `NON_TEXT_SIGNAL`。项目复诊 Session 进一步确认：用户曾把 CH340 TXD/RXD 接反，使 CH340 RXD 落在板子 RX 输入脚上并拾取干扰。改线后曾出现 0 字节空闲状态，但重新插回 CH340 后，最新 `check-033212.raw.log` 又收到 `1,503` 字节相同的非文本信号。
+`licheerv-nano-full-boot-20260925-021046.raw.log` 收到 `23,326` 字节，升级后的诊断结果是 `NON_TEXT_SIGNAL`。项目复诊 Session 进一步确认：用户曾把 CH340 TXD/RXD 接反，使 CH340 RXD 落在板子 RX 输入脚上并拾取干扰。改线后曾出现 0 字节空闲状态，但重新插回 CH340 后，`check-033212.raw.log` 又收到 `1,503` 字节相同的非文本信号。2026-09-25 04:05 的最新只读空闲采集 `idle-20260925-040507.raw.log` 收到 `800` 字节，`msb_ratio=0.624`，仍为 `NON_TEXT_SIGNAL`。
 
 当前不能确认：
 
