@@ -9,6 +9,8 @@ param(
     [string]$LogPath = '',
     [ValidateRange(1, 3600)]
     [int]$UbootWaitSeconds = 600,
+    [ValidateRange(0, 86400)]
+    [int]$CaptureSeconds = 900,
     [switch]$ValidateOnly
 )
 
@@ -133,3 +135,25 @@ if ($null -eq $urlLine) {
     throw "The board did not print MUSHROOM_WEB_URL. See $LogPath"
 }
 Write-Host "Board is ready: $($urlLine.Line.Substring('MUSHROOM_WEB_URL '.Length))"
+
+if ($CaptureSeconds -gt 0) {
+    Write-Host "Capturing request evidence from $serialPortName for $CaptureSeconds seconds. Press Ctrl+C to stop early."
+    $capturePort = [System.IO.Ports.SerialPort]::new($serialPortName, 115200)
+    $capturePort.ReadTimeout = 100
+    $capturePort.Open()
+    try {
+        $captureDeadline = [DateTime]::UtcNow.AddSeconds($CaptureSeconds)
+        while ([DateTime]::UtcNow -lt $captureDeadline) {
+            $chunk = $capturePort.ReadExisting()
+            if (-not [string]::IsNullOrEmpty($chunk)) {
+                Write-Host -NoNewline $chunk
+                [System.IO.File]::AppendAllText($LogPath, $chunk, [System.Text.Encoding]::UTF8)
+            }
+            Start-Sleep -Milliseconds 20
+        }
+    }
+    finally {
+        $capturePort.Close()
+        $capturePort.Dispose()
+    }
+}

@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $launcher = Join-Path $PSScriptRoot 'run_arceos_licheerv_nano.ps1'
-$configurationJson = & $launcher -Example mushroom-web -ValidateOnly
+$configurationJson = & $launcher -Example mushroom-web -CaptureSeconds 0 -ValidateOnly
 if (-not $?) {
     throw 'Launcher validation failed.'
 }
