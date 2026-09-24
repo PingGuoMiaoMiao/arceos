@@ -218,6 +218,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 该启动器不依赖 SD 卡根文件系统（§5.6）：ArceOS 镜像与 AIC8800 固件都经串口送入内存。
 
+**传输耗时预估（重要）**：产品镜像 `8,212,544` 字节，XMODEM-1K 需要 `8,021` 个包，
+线上约 `8,253,609` 字节，115200 8N1 理论 716 秒；加上逐包握手与 ACK 往返，
+**实际约 14–18 分钟**。这段时间里终端只会有缓慢滚动的 XMODEM 进度，**不要当作卡死而中断**。
+
+对照：09-12 板级验证成功的那次只传输了 `114,752` 字节（约 10 秒），因此大镜像的耗时是本次新增的变量。
+
 ### 6.4 产品 URL 出现后运行门禁
 
 ```powershell
@@ -242,7 +248,10 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 | `git diff --check`（Skill 提示修复提交前） | 通过 |
 | `--scan-logs artifacts/uart` | 7 份文件；`LAST_READABLE_TEXT = 2026-09-25 04:45:41`（`UART_TEXT`，23,107 字节） |
 | `--diagnose-log` 恢复日志 | `line_state=UART_TEXT`，`msb_ratio=0.05`，`printable_ratio=0.94` |
-| `git ls-remote personal` | 远端与本地同为 `bfd2c25`，无未推送提交 |
+| `git ls-remote personal` | 远端与本地同为 `2151a4f`，无未推送提交 |
+| 启动器前置步骤预演 | 构建（`bash -lic`）exit 0；`test -s` exit 0；`import paramiko,serial,xmodem` exit 0；CH340 提取端口名 `COM3` |
+| sender 的 U-Boot 提示符假设 | `soph#` 由 09-12 真板日志证实存在，见下 |
+| 09-12 板级成功流程 | `aic8800-management-board-20260912.log`、`aic8800-rf-mac-board-20260912.log` 含完整链路：`soph#` → `loadx 0x80200000` → `XMODEM CRC handshake detected` → `## Total Size = 0x0001c040 = 114752 Bytes` → `go 0x80200000` → `## Starting application at 0x80200000 ...` |
 
 项目复诊 Session 还记录了 179 项 Cargo 测试、15 个构建目标和完整产品回归通过；这些属于该 Session 的既有证据，不替代下一次改代码后的重新验证，也不替代真板门禁。
 

@@ -185,3 +185,27 @@
   启动器测试仍为 `SG2002 launcher validation PASS`。
   提交 `a998957 fix(tools): configure the worktree before the launcher builds it`。
 - 下一步：用户在自己终端执行启动器；提示 `Press RESET once` 时按一次 RESET，隐藏提示里输入 Wi-Fi 凭据。
+
+### 05:20 +08:00 — 启动器全链路预检（含 U-Boot 提示符与大镜像耗时）
+
+- 观察：sender 与 defconfig 两个缺陷修复后，需要在用户运行前把剩余风险提前打掉。
+- 判断依据：
+  1. 逐步复演启动器的四条前置步骤；
+  2. sender 的 U-Boot 检测是 `read_until(b"U-Boot 2021.10")` → 发空格打断 autoboot →
+     `read_until(b"soph#", 15)`，因此提示符字符串必须与真板一致；
+  3. 产品镜像是 `8,212,544` 字节，而 09-12 板级成功的那次只传了 `114,752` 字节。
+- 动作：预演四条前置步骤；在全部历史日志中检索 `soph#`；计算 XMODEM-1K 的理论与实际耗时。
+- 结果：
+  - 前置步骤全部通过：构建（`bash -lic`）exit 0；`test -s` exit 0；
+    `import paramiko,serial,xmodem` exit 0；CH340 提取端口名 `COM3`。
+  - `soph#` 在 `logs/aic8800-management-board-20260912.log` 与
+    `logs/aic8800-rf-mac-board-20260912.log` 中真实存在，且这两份日志完整记录了成功流程：
+    `Hit any key to stop autoboot` → `soph# U-Boot prompt detected` → `loadx 0x80200000` →
+    `XMODEM CRC handshake detected` → `## Total Size = 0x0001c040 = 114752 Bytes` →
+    `go 0x80200000` → `## Starting application at 0x80200000 ...`。
+    即 sender 的提示符假设与 XMODEM 加载路径**已有板级证据**。
+  - 大镜像耗时：8,021 包 × 1,029 字节 = 8,253,609 字节，115200 8N1 理论 716 秒，
+    加握手/ACK 往返实际约 **14–18 分钟**。
+- 下一步：用户在自己终端执行启动器；传镜像期间不要中断。出现 `MUSHROOM_WEB_URL` 后跑
+  `verify_mushroom_web.py`。若 `read_until(b"soph#")` 超时，说明空格没有及时打断 autoboot，
+  应把打断动作提前或增大 autoboot 延时——这是当前唯一未在本轮真板复现的环节。
