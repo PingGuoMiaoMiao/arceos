@@ -233,3 +233,30 @@
 - 下一步：等待传输完成。完成后 sender 会先送 AIC8800 固件，再在隐藏提示里要求输入
   Wi-Fi SSID 与密码——**必须在该终端内输入**。之后等待 `MUSHROOM_WEB_URL`。
   传输期间不要拔线、不要按 RESET、不要另开串口监视器（会抢 COM3）。
+
+### 05:13 +08:00 — 传输期间离线预检门禁输入与 HTTP 契约
+
+- 观察：XMODEM 传输仍在进行（PID 40712 CPU 持续增长），不能触碰 COM3。等待期间可做的事是
+  把产品门禁的输入与契约提前验通，避免板子起来后卡在低层错误上。
+- 判断依据与动作：
+  1. 用 `verify_mushroom_web.py` 自身的 `load_metadata` / `build_envelope` 校验两份候选输入；
+  2. 审查 `examples/mushroom-web-licheerv-nano/src/service.rs` 的 `handle_inference` 执行顺序，
+     确认"故意送错 CRC 的那次请求"是否会占用 `request_id`；
+  3. 比对板端与校验器的 `MODEL_NAME`、信封常量与 `/health` 键集。
+- 结果：
+  - **门禁输入可用**：
+    `mushroom_runtime_rgb_verified.bin`（1,228,800 字节，source 640x480，resized 640x480，pad (0,80)）
+    与 `runtime_input_rgb_u8.bin`（1,228,800 字节，source 263x191，resized 640x464，pad (0,88)）
+    都能构造出合法 `ARIM` 信封，总长均为 1,228,840 字节，CRC32 分别为 `9391da25` 与 `7f7f31ec54`。
+  - **错 CRC 不吃 request_id**：`handle_inference` 的顺序是
+    `wifi_ready → tpu_ready → PhoneImageEnvelopeV1::parse → payload 长度 → try_acquire()`。
+    `request_id` 在 `try_acquire()` 里才 `fetch_add`，而错 CRC 在 `parse` 阶段就已返回
+    400 `INVALID_ENVELOPE`。因此校验器的"request_id 连续"检查不会假失败。
+  - **契约常量一致**：`MODEL_NAME = "mushroom_yolov5s_cv181x_int8_sym"` 在板端
+    `modules/axmodel_mushroom_yolov5/src/lib.rs:15` 与校验器第 20 行完全相同；
+    `MAGIC=ARIM`、`VERSION=1`、`HEADER_LENGTH=40`、`PAYLOAD_LENGTH=1228800`、
+    `CONTENT_TYPE=application/vnd.arceos.rgb-u8` 全部一致；
+    `write_health_response` 恰好输出 `{"wifi":..,"tpu":..,"model":..}` 三个键，与
+    校验器 `expected` 的精确相等比较相容。
+- 下一步：继续等待传输完成（预计 `05:25`–`05:29`）。`MUSHROOM_WEB_URL` 出现后执行
+  `verify_mushroom_web.py --url ... --input-rgb <上述文件> --input-meta <对应 json> --requests 20`。
