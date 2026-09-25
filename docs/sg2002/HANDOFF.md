@@ -254,6 +254,55 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 
 `<...>` 只能用实际日志或实际文件路径替换，不能自行填写。校验器打印 `SG2002_STA_PRODUCT_GATE_PASS` 才表示 STA 产品门禁通过。
 
+### 6.5 SD 卡 fatload 加载方式（推荐）
+
+**为什么换**：启动器默认走 XMODEM，而 sender 用的是**普通 XMODEM（128 字节/包）**，
+不是 XMODEM-1K。产品镜像 `8,212,544` 字节需要 **64,161 个停等往返**。
+检索全部历史日志中的 `## Total Size`，XMODEM 在本项目**只成功完成过两次**：
+`114,752` 与 `118,848` 字节——产品镜像这个体积从未跑通。
+2026-09-25 05:10 的首次尝试在 `XMODEM CRC handshake detected` 之后**没有任何进度输出即中止**。
+
+而 U-Boot 读同一张卡的速度是 **10.7 MiB/s**：`11,757,220` 字节的 `boot.sd` 用 `1043 ms`。
+所以把镜像放到卡的 FAT 分区，用 `fatload` 加载。
+
+**步骤**
+
+1. **把镜像放进 TF 卡的 FAT 分区**（`mmcblk0p1`）。两种做法：
+
+   | 做法 | 说明 |
+   | --- | --- |
+   | 取出 TF 卡 + 读卡器 | **推荐**。不牵涉板子挂载，无冲突风险 |
+   | 板子 USB 大容量存储导出 | 出厂 Linux 的 init 会把**整张卡**导出（`echo /dev/mmcblk0 > functions/mass_storage.disk0/lun.0/file`）。但 Linux 侧可能仍以只读挂载着 `mmcblk0p1`，从 Windows 写入有冲突风险 |
+
+   建议用**短文件名**（如 `arceos.bin`），减少 U-Boot FAT 驱动处理长文件名的风险。
+
+2. 安全弹出后把卡插回板子。
+
+3. 以 fatload 方式运行启动器（注意 `-FatloadName` 只写卡上的文件名，不是本地路径）：
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+     "\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\tools\sg2002\run_arceos_licheerv_nano.ps1" `
+     -FatloadName arceos.bin
+   ```
+
+4. 提示后**按一次 RESET**。sender 会执行
+   `fatload mmc 0 0x80200000 arceos.bin`，并**校验 U-Boot 回报的字节数等于本地镜像大小**。
+
+5. 之后的序列与 §6.3 完全相同：`go 0x80200000` → AIC8800 固件逐个握手 →
+   Wi-Fi 凭据隐藏提示 → `MUSHROOM_WEB_URL`。
+
+**失败判读**
+
+| 报错 | 含义 |
+| --- | --- |
+| `U-Boot could not read <name> from the SD card` | 文件名不对，或没放进 FAT 分区 |
+| `U-Boot did not report reading <n> bytes` | 卡上文件被截断或大小与本地镜像不符 |
+| 其它 | 判读同 §6.3 |
+
+启动器仍会传入本地镜像路径，用于计算期望大小并做上述校验，因此本地构建产物必须存在。
+**不要**为了本门禁写整卡镜像恢复根文件系统（见 §5.6）。
+
 ## 7. 当前验证记录
 
 2026-09-25 本文档整理前重新执行：
@@ -266,7 +315,8 @@ py -3.12 "\\wsl.localhost\Ubuntu\home\chen\arceos-worktrees\sg2002-phone-tpu\too
 | `git diff --check`（Skill 提示修复提交前） | 通过 |
 | `--scan-logs artifacts/uart` | 7 份文件；`LAST_READABLE_TEXT = 2026-09-25 04:45:41`（`UART_TEXT`，23,107 字节） |
 | `--diagnose-log` 恢复日志 | `line_state=UART_TEXT`，`msb_ratio=0.05`，`printable_ratio=0.94` |
-| `git ls-remote personal` | 远端与本地同为 `2151a4f`，无未推送提交 |
+| `git ls-remote personal` | 远端与本地一致，无未推送提交 |
+| `test_send_arceos_xmodem.py` | 28 项通过（含 3 项 fatload 用例：成功、大小不符、文件不存在） |
 | 启动器前置步骤预演 | 构建（`bash -lic`）exit 0；`test -s` exit 0；`import paramiko,serial,xmodem` exit 0；CH340 提取端口名 `COM3` |
 | sender 的 U-Boot 提示符假设 | `soph#` 由 09-12 真板日志证实存在，见下 |
 | 09-12 板级成功流程 | `aic8800-management-board-20260912.log`、`aic8800-rf-mac-board-20260912.log` 含完整链路：`soph#` → `loadx 0x80200000` → `XMODEM CRC handshake detected` → `## Total Size = 0x0001c040 = 114752 Bytes` → `go 0x80200000` → `## Starting application at 0x80200000 ...` |

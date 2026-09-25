@@ -301,3 +301,32 @@
   （`mmc0 is current device`、`Boot from SD dev 0`），可把 `.bin` 放进 FAT 分区后用
   `fatload mmc 0 0x80200000 <file>` + `go 0x80200000`，避开 8.2 MB 的串口传输。
   该替代方案属部署方式变更，需先与用户确认。
+
+### 14:0x +08:00 — 改用 SD 卡 fatload 加载产品镜像
+
+- 观察：05:10 的首次产品启动在 `XMODEM CRC handshake detected` 之后没有任何进度输出即中止，
+  日志止于 `## Ready for binary (xmodem) download to 0x80200000 at 115200 bps...`；
+  sender 已退出，COM3 不复存在。用户确认终端当时报了错。
+- 判断依据：
+  1. `XMODEM_TRANSFER_MODE = "xmodem"`（**普通 XMODEM，非 XMODEM-1K**），每帧仅 128 字节。
+     产品镜像 `8,212,544` 字节 → **64,161 个停等往返**；
+  2. 全部历史日志中 `## Total Size` 只出现过两次成功记录：`114,752` 与 `118,848` 字节，
+     即该路径从未在超过十分之一产品体积上被验证；
+  3. 同一份启动日志显示 U-Boot 从 SD 卡读 `11,757,220` 字节的 `boot.sd` 只用 `1043 ms`（10.7 MiB/s）；
+  4. 出厂 Linux 的 init 会把整张卡导出为 USB 大容量存储
+     （`echo /dev/mmcblk0 > functions/mass_storage.disk0/lun.0/file`）。
+- 动作：
+  1. 在 `send_arceos_xmodem.py` 增加 `load_binary_via_fatload()`：发送
+     `fatload mmc 0 0x80200000 <文件名>`，并**校验 U-Boot 回报的字节数等于本地镜像大小**；
+     同时识别 `Unable to read file` / `Failed to load` 两种失败；
+  2. 增加 `--fatload=<文件名>` 选项，命中时跳过 XMODEM 传输，其余（`go`、AIC8800 固件握手、
+     Wi-Fi 凭据、各 `verify_*`）完全复用；
+  3. 启动器增加 `-FatloadName` 参数并透传，`[3/3]` 提示改为显示实际加载方式；
+  4. 在 `HANDOFF.md` 新增 §6.5 记录完整操作步骤与失败判读。
+- 结果：`send_arceos_xmodem.py` **28 项测试通过**（新增 3 项：成功、大小不符、文件不存在）；
+  启动器测试 `SG2002 launcher validation PASS`；`-ValidateOnly` 配置已包含 `FatloadName`。
+  提交 `4cecf8e feat(tools): load the product image from the SD card instead of over XMODEM`。
+- 下一步：把 `.bin` 放入 TF 卡 FAT 分区（建议短名如 `arceos.bin`），用
+  `-FatloadName arceos.bin` 重跑启动器并按一次 RESET。
+  优先用读卡器取卡写入；若走板子 USB 大容量存储导出，注意 Linux 侧可能仍只读挂载着
+  `mmcblk0p1`，存在写入冲突风险。
