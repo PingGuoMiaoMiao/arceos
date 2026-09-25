@@ -400,3 +400,43 @@
   则确认是"关联后数据帧 RX 通路未生效"（怀疑固件 RX 过滤/数据通路使能未设置），
   需在 `me`/`association` 流程里补齐对应配置命令；若出现 ARP 但无 DHCP，
   则转向 DHCP 报文构造或广播处理方向。
+### 15:20 +08:00 — DHCP 根因确认：驱动从未发送 MM_SET_FILTER（RX 过滤器）
+
+- 观察：用户提供官方资料目录 `C:\Users\chen\Desktop\02_Study_Materials\practice笔记\SPIEED开发板licheeRV Nano WE文档`，
+  要求先查资料再改代码。
+- 判断依据与动作：
+  1. 资料确认：**无线芯片 `AIC8800D`，Wi-Fi 走 SDIO1，蓝牙走 UART1**（与平台 `axconfig.toml`
+     的 `[0x0432_0000, 0x1000] # SDIO1` 一致）；且设计文档明确写出
+     "SDK 的 AIC8800 驱动…实现时只从固定源码提取硬件顺序、固件文件、SDIO 命令、消息格式和收发协议，
+     再用 Rust 按 ArceOS 接口重写"——**参考实现是判断缺失步骤的唯一权威依据**。
+  2. 本机没有 Linux 版驱动源码，但 **WSL 可访问 GitHub**（`curl https://github.com` 返回 HTTP 200），
+     于是以 `--depth 1 --filter=blob:none` 稀疏检出官方仓库
+     `https://github.com/sipeed/LicheeRV-Nano-Build`（`main` = `d4003f1`，与用户此前记录的 `d4003f` 一致），
+     只保留 `osdrv/extdrv/wireless/aic8800/`，落在 `/home/chen/lrvn-ref`（142 个文件）。
+  3. 在参考驱动中找到 **`MM_SET_FILTER_REQ`（RX FILTER CONFIGURATION）**：
+     `lmac_msg.h` 定义 `struct mm_set_filter_req { u32_l filter; }`（写入 `rxCntrlReg` 硬件寄存器），
+     `rwnx_msg_tx.c:2489 rwnx_send_set_filter()` 实现，运行时调用点 `rwnx_main.c:1163` 与 `:2122`。
+  4. 在 Rust 驱动中检索 `filter` / `set_filter` / `MM_SET_FILTER` —— **一条都没有**。
+- 结果（根因）：
+  - 参考驱动实际发送的过滤器值由以下组成：
+    `RWNX_MAC80211_NOT_CHANGEABLE`（含 `NXMAC_ACCEPT_DATA_BIT=BIT(24)`、
+    `NXMAC_ACCEPT_Q_DATA_BIT=BIT(26)`、`NXMAC_ACCEPT_QO_S_NULL_BIT=BIT(28)`、
+    `NXMAC_ACCEPT_MY_UNICAST_BIT=BIT(7)`、`NXMAC_ACCEPT_BROADCAST_BIT=BIT(3)`、
+    `NXMAC_ACCEPT_OTHER_MGMT_FRAMES_BIT=BIT(15)`、`NXMAC_ACCEPT_BEACON_BIT=BIT(10)`、
+    `NXMAC_ACCEPT_PROBE_RESP_BIT=BIT(9)`）
+    加上无条件 `NXMAC_ACCEPT_BA_BIT=BIT(17)`，再加调用点传入的
+    `FIF_BCN_PRBRESP_PROMISC|FIF_OTHER_BSS`（BIT(4)）、`FIF_PSPOLL`（BIT(18)）、
+    `FIF_PROBE_REQ`（BIT(8) + BIT(13)）→ **合计 `0x1506A798`**。
+  - **Rust 驱动从未发送这条命令，固件的 RX 过滤器因此不接受数据帧**：主机只收到默认转发的
+    管理帧（beacon）与控制端口打开后的 EAPOL，**其它数据帧（含 DHCP 广播回包）全被固件丢弃**。
+    这精确解释了 `rx=0`、以及"beacon 能收、EAPOL 能收、其它一条都收不到"。
+  - 消息号偏移经脚本从参考枚举逐个计数并与 Rust 既有约定交叉验证：
+    参考 `MM_SET_STACK_START_REQ = MM_RESET_REQ + 123`，Rust 亦为 `+123`，两者一致；
+    因此 **`MM_SET_FILTER_REQUEST = MM_RESET_REQUEST + 14`、`MM_SET_FILTER_CONFIRM = +15`**。
+- 排除项（本轮一并证伪，避免误改）：
+  - **校验和不是成因**：核对 smoltcp 源码 `phy/mod.rs:173`，`Checksum::Both`（默认）语义为
+    "接收时校验、发送时计算"——**由协议栈完成**，与参考驱动 `dev->hw_features = 0`（无硬件卸载）一致。
+  - MAC 地址、TX 描述符、TID 均已在前一轮排除。
+- 下一步：在 `axdriver_aic8800` 中新增 `MM_SET_FILTER_REQUEST`（= `MM_RESET_REQUEST + 14`）命令，
+  参数为单个 `u32` 小端 `0x1506A798`，在 STA 接口就绪后、关联之前（或紧随 `MM_ADD_IF`）发送并等待 confirm；
+  补单元测试与真板复测。
