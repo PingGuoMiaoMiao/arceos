@@ -330,3 +330,40 @@
   `-FatloadName arceos.bin` 重跑启动器并按一次 RESET。
   优先用读卡器取卡写入；若走板子 USB 大容量存储导出，注意 Linux 侧可能仍只读挂载着
   `mmcblk0p1`，存在写入冲突风险。
+### 14:13–14:17 +08:00 — ArceOS 首次真板运行：fatload 生效，WPA2 链路打通，卡在 DHCP
+
+- 观察：用户用 `-FatloadName arceos.bin` 运行启动器并按了一次 RESET。串口日志
+  `tools/sg2002/logs/mushroom-web-sta-board-20260925-141315.log`（UTF-16LE）显示：
+  `soph# U-Boot prompt detected` → `fatload mmc 0 0x80200000 arceos.bin` →
+  **`8212544 bytes read in 729 ms (10.7 MiB/s)`** → `U-Boot read 8212544 bytes from arceos.bin`
+  → `go 0x80200000` → `## Starting application at 0x80200000 ...` → ArceOS 横幅与
+  `arch = riscv64 / platform = riscv64-licheerv-nano`，随后
+  `SG2002 AIC8800D80 full firmware boot test`。
+- 判断依据：
+  1. **fatload 路径完全生效**：字节数精确等于本地镜像 `8,212,544`，耗时 `729 ms`，
+     而 XMODEM 同体积预估需 14–18 分钟且历史上从未在十分之一体积上成功过；
+  2. 横幅 `SG2002 AIC8800D80 full firmware boot test` 来自共享库
+     `examples/aic8800-firmware-boot-licheerv-nano/src/lib.rs:125`，
+     `mushroom-web-licheerv-nano` 在 `Cargo.toml:11` 依赖它，**不是装错了镜像**；
+  3. AIC8800 固件 5 个文件全部握手成功（`AIC_FIRMWARE_RECEIVED` 逐一匹配 CRC32）；
+  4. 门禁第 1、2 项取得证据：`AIC8800_FIRMWARE_BOOT_PASS`、`AIC8800_STACK_PASS`、
+     `AIC8800_RF_MAC_PASS`（MAC `38:7a:cc:98:e6:46`）、`AIC8800_MANAGEMENT_PASS`、
+     `AIC8800_ME_PASS`、`AIC8800_STA_INTERFACE_PASS`、`AIC8800_SCAN_PASS`，
+     用户输入密码后 `AIC8800_ASSOCIATION_PASS` → EAPOL 1/2/3/4 → `AIC8800_KEY_INSTALL_PASS`
+     → `AIC8800_LINK_UP_PASS` → **`AIC8800_CONTROL_PORT_OPEN_PASS`**；
+  5. **卡在 DHCP**：`AIC8800_DHCP_STARTED` 之后持续输出
+     `AIC8800_DHCP_DIAGNOSTIC tx=1..4 rx=0 ... last-tx-type=0x0800 last-tx-length=304
+     last-rx-type=0x0000 last-rx-length=0`——**板子在发 DHCP DISCOVER，一个回包也没收到**。
+- 排除项：满屏 `AIC8800_NETWORK_EVENT undecoded-data error=UnsupportedFrameControl
+  { frame_control: 128 }` **不是成因**。`modules/axdriver_aic8800/src/data.rs:59` 判定
+  `frame[0] & 0x0f != 0x08` 即报错，而 `0x0080` 的 frame[0]=0x80 是 **Beacon 管理帧**
+  （type=0 subtype=8），只是被喂进了数据解码器。EAPOL 数据帧（ethertype `0x888e`）
+  解码成功，说明接收路径本身可用。
+- 结果：**门禁 1、2 项通过**（AIC8800 固件启动、WPA2 受控端口打开）；
+  第 3 项 DHCP 未通过，`MUSHROOM_WEB_URL` 未出现；sender 在 150 秒 DHCP 超时后失败。
+- 下一步（按优先级）：
+  1. 在 MEIZU 热点侧验证 DHCP 是否正常：用另一台设备连同一热点确认能拿到地址；
+     关掉再打开热点；检查是否有"最大设备数"限制或客户端隔离；
+  2. 换一个普通路由器热点复测，以区分"热点侧不响应"与"板端 DHCP/广播收发问题"；
+  3. 若换 AP 仍 `rx=0`，则怀疑广播数据帧的收发路径，需要查
+     `axdriver_aic8800` 的 tx 目标地址处理与固件 RX 过滤设置。
