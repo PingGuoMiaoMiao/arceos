@@ -276,6 +276,44 @@ def enter_uboot_prompt(uart, timeout: float) -> bool:
     return True
 
 
+def load_binary_via_fatload(
+    uart, filename: str, expected_size: int, timeout: float = 120.0
+) -> None:
+    """Load the application from the SD card instead of streaming it over serial.
+
+    The default path transfers the image with XMODEM in 128-byte frames, which
+    needs one stop-and-wait round trip per frame, so a multi-megabyte product
+    image becomes tens of thousands of frames and tens of minutes. No transfer
+    larger than 118,848 bytes has ever completed on this board. U-Boot reads the
+    same image from the card FAT partition in about a second, so the image is
+    copied to the card and loaded with fatload instead.
+    """
+    command = f"fatload mmc 0 0x{LOAD_ADDRESS:08x} {filename}"
+    print(f"loading {filename} from the SD card: {command}", flush=True)
+    uart.write(command.encode("ascii") + b"\r")
+    uart.flush()
+
+    marker = f"{expected_size} bytes read in".encode("ascii")
+    failures = (b"Unable to read file", b"Failed to load")
+    deadline = time.monotonic() + timeout
+    data = bytearray()
+    while time.monotonic() < deadline:
+        if marker in data:
+            print(f"U-Boot read {expected_size} bytes from {filename}", flush=True)
+            return
+        if any(failure in data for failure in failures):
+            raise TimeoutError(f"U-Boot could not read {filename} from the SD card")
+        chunk = uart.read(uart.in_waiting or 1)
+        if chunk:
+            data.extend(chunk)
+            print(chunk.decode("utf-8", errors="replace"), end="", flush=True)
+            if len(data) > 8192:
+                del data[: len(data) - 4096]
+    raise TimeoutError(
+        f"U-Boot did not report reading {expected_size} bytes for {filename}"
+    )
+
+
 def send_xmodem_binary_once(uart, binary: Path) -> bool:
     print("starting U-Boot loadx", flush=True)
     uart.write(f"loadx 0x{LOAD_ADDRESS:08x}\r".encode("ascii"))
@@ -360,6 +398,9 @@ def main() -> int:
     )
     input_meta_option = next(
         (arg for arg in sys.argv[1:] if arg.startswith("--input-meta=")), None
+    )
+    fatload_option = next(
+        (arg for arg in sys.argv[1:] if arg.startswith("--fatload=")), None
     )
     paths = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
     if len(paths) != 1:
@@ -509,19 +550,36 @@ def main() -> int:
                 print(message, file=sys.stderr)
                 return 1
 
-        def transfer_once():
-            return send_xmodem_binary_once(uart, binary)
+        if fatload_option is not None:
+            fatload_name = fatload_option.split("=", 1)[1].strip()
+            if not fatload_name:
+                print(
+                    "--fatload= needs the file name as it appears on the SD card",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                load_binary_via_fatload(uart, fatload_name, expected_size)
+            except TimeoutError as error:
+                print(f"SD card load failed: {error}", file=sys.stderr)
+                return 1
+        else:
 
-        def reenter_uboot():
-            print(
-                "XMODEM transfer was interrupted; waiting for the board to re-enter U-Boot.",
-                flush=True,
-            )
-            return enter_uboot_prompt(uart, uboot_wait_seconds)
+            def transfer_once():
+                return send_xmodem_binary_once(uart, binary)
 
-        if not retry_transfer_after_reboot(transfer_once, reenter_uboot, attempts=3):
-            print("XMODEM transfer failed", file=sys.stderr)
-            return 1
+            def reenter_uboot():
+                print(
+                    "XMODEM transfer was interrupted; waiting for the board to re-enter U-Boot.",
+                    flush=True,
+                )
+                return enter_uboot_prompt(uart, uboot_wait_seconds)
+
+            if not retry_transfer_after_reboot(
+                transfer_once, reenter_uboot, attempts=3
+            ):
+                print("XMODEM transfer failed", file=sys.stderr)
+                return 1
         if jump:
             uart.write(f"go 0x{LOAD_ADDRESS:08x}\r".encode("ascii"))
             if uart_irq_probe:

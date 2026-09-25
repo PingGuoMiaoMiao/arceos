@@ -7,6 +7,7 @@ param(
     [string]$SenderPath = '',
     [string]$FirmwareDirectory = '',
     [string]$LogPath = '',
+    [string]$FatloadName = '',
     [ValidateRange(1, 3600)]
     [int]$UbootWaitSeconds = 600,
     [ValidateRange(0, 86400)]
@@ -33,6 +34,7 @@ $configuration = [ordered]@{
     AppFeatures = $appFeatures
     BinaryInWsl = $binaryInWsl
     BinaryInWindows = $binaryInWindows
+    FatloadName = $FatloadName
 }
 if ($ValidateOnly) {
     $configuration | ConvertTo-Json -Compress
@@ -113,7 +115,13 @@ if (-not [string]::IsNullOrWhiteSpace($logDirectory)) {
 
 Write-Host "[2/3] Serial port: $serialPortName"
 Write-Host "UART log: $LogPath"
-Write-Host '[3/3] Press RESET once. The Wi-Fi password prompt is hidden and is never put on the command line.'
+if ([string]::IsNullOrWhiteSpace($FatloadName)) {
+    Write-Host '[3/3] Load method: XMODEM over serial. Press RESET once.'
+}
+else {
+    Write-Host "[3/3] Load method: fatload mmc 0 0x80200000 $FatloadName (the image must already be on the SD card). Press RESET once."
+}
+Write-Host 'The Wi-Fi password prompt is hidden and is never put on the command line.'
 
 $senderArguments = @(
     '-3.12'
@@ -126,6 +134,9 @@ $senderArguments = @(
     '--wifi-credentials-prompt'
     $binaryInWindows
 )
+if (-not [string]::IsNullOrWhiteSpace($FatloadName)) {
+    $senderArguments += "--fatload=$FatloadName"
+}
 & $pythonLauncher @senderArguments 2>&1 | Tee-Object -FilePath $LogPath
 $senderExitCode = $LASTEXITCODE
 if ($senderExitCode -ne 0) {

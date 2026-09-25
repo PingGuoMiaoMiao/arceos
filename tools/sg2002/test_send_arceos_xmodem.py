@@ -6,6 +6,7 @@ import zlib
 
 from send_arceos_xmodem import (
     XMODEM_TRANSFER_MODE,
+    load_binary_via_fatload,
     retry_transfer_after_reboot,
     send_wifi_credentials,
     send_aic_firmware_bundle,
@@ -360,6 +361,51 @@ class WifiCredentialTransferTests(unittest.TestCase):
                         timeout=0.1,
                     )
                 self.assertEqual(uart.writes, [])
+
+
+class FatloadLoadTests(unittest.TestCase):
+    """The SD card path replaces a 128-byte-frame XMODEM transfer of megabytes."""
+
+    @staticmethod
+    def make_uart(output: bytes):
+        class ScriptedUart:
+            def __init__(self):
+                self._buffer = bytearray(output)
+                self.writes = []
+
+            @property
+            def in_waiting(self):
+                return len(self._buffer)
+
+            def read(self, size):
+                data = bytes(self._buffer[:size])
+                del self._buffer[:size]
+                return data
+
+            def write(self, data):
+                self.writes.append(data)
+                return len(data)
+
+            def flush(self):
+                pass
+
+        return ScriptedUart()
+
+    def test_issues_fatload_and_accepts_the_reported_size(self):
+        uart = self.make_uart(b"\r\n8212544 bytes read in 812 ms (9.6 MiB/s)\r\n")
+        load_binary_via_fatload(uart, "mushroom-web.bin", 8212544)
+        sent = b"".join(uart.writes)
+        self.assertIn(b"fatload mmc 0 0x80200000 mushroom-web.bin", sent)
+
+    def test_refuses_a_size_that_does_not_match_the_local_image(self):
+        uart = self.make_uart(b"\r\n4096 bytes read in 4 ms\r\n")
+        with self.assertRaises(TimeoutError):
+            load_binary_via_fatload(uart, "truncated.bin", 8212544, timeout=0.2)
+
+    def test_reports_a_file_that_is_not_on_the_card(self):
+        uart = self.make_uart(b"** Unable to read file missing.bin **\r\n")
+        with self.assertRaisesRegex(TimeoutError, "could not read"):
+            load_binary_via_fatload(uart, "missing.bin", 8212544, timeout=0.5)
 
 
 if __name__ == "__main__":
