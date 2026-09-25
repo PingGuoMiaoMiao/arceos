@@ -367,3 +367,36 @@
   2. 换一个普通路由器热点复测，以区分"热点侧不响应"与"板端 DHCP/广播收发问题"；
   3. 若换 AP 仍 `rx=0`，则怀疑广播数据帧的收发路径，需要查
      `axdriver_aic8800` 的 tx 目标地址处理与固件 RX 过滤设置。
+### 14:30 +08:00 — DHCP 卡点定位：关联后收不到任何数据帧
+
+- 观察：用户指出**这台电脑正连着 MEIZU 热点**（`WLAN 192.168.245.147`），即热点在手机上，
+  电脑本身就是该热点的一个已获地址的客户端。
+- 判断依据与动作：
+  1. **热点侧排除**：电脑已从该热点取得 `192.168.245.147`，说明热点 DHCP 服务器工作正常。
+     （另查到本机 `icssvc`/`IcsSvc`（Windows 移动热点服务）为 Stopped、`本地连接* 9/10`
+     为 `169.254.x.x` Tentative——这属于正常，因为热点不在本机。）
+  2. 复核板端 TX 路径：`network.rs` 的 `AicTransmitToken::consume` →
+     `AicAssociationClient::send_ethernet_frame`（`association.rs:275`）→
+     `build_d80_ethernet_data_transfer`；`destination_address` 直接取以太网帧 `frame[0..6]`，
+     广播即 `ff:ff:ff:ff:ff:ff`，**无硬编码**。
+     `build_d80_eapol_data_transfer` 只是转发给以太网构造器，两者描述符完全相同；
+     TX 描述符的 `RWNX_HWQ_BE=1`、`EAPOL_TID=0`（TID 0 即 Best Effort，命名误导但非缺陷）。
+  3. 复核板端 RX 路径：整个 749 行日志中出现的以太网类型**只有 `0x888e`（EAPOL，1 次）**；
+     `AIC8800_DHCP_DIAGNOSTIC` 的 `rx` 自始至终为 `0`，`last-rx-type=0x0000`。
+     `network.rs:142` 的 `receive()` 只在 `AssociationEvent::Data` 时返回帧，
+     `rx=0` 意味着**关联建立后没有产生过任何一个 `Data` 事件**。
+  4. 日志中 8 条 `undecoded-data` 与 1 条 `transport message-type=0x12` 受
+     `self.transport_events < 8` **打印上限**约束，只是前若干条，不能当作总数。
+- 结果（本轮确定的结论）：
+  - 板端**不是** MAC 错误（`38:7a:cc:98:e6:46` 一致用于 `InterfaceConfig`、TX 源地址与固件读取）；
+  - 板端**不是** TX 描述符硬编码问题（两个构造器共用同一路径）；
+  - 真正症状是：**WPA2 关联完成、受控端口打开之后，固件不再向主机投递任何数据帧**，
+    只投递管理帧（beacon）；DHCP DISCOVER 正常发出，OFFER 无论广播还是单播都收不到。
+    这已不是"NAT/热点配置"问题，而是**板端固件/驱动的数据接收通路问题**。
+  - 尚未定位到确切的代码缺陷，因此**本轮不做推测性修改**——改驱动内部而没有证据只会引入新变量。
+- 下一步（区分剩余假设的关键实验）：让板子保持关联，同时**在电脑上制造广播流量**
+  （例如 `ping 192.168.245.255`、浏览网页、`arp -d` 后 ping 网关），
+  观察板端日志里是否出现**任何** `AIC8800_DATA_FRAME`。若一条都不出现，
+  则确认是"关联后数据帧 RX 通路未生效"（怀疑固件 RX 过滤/数据通路使能未设置），
+  需在 `me`/`association` 流程里补齐对应配置命令；若出现 ARP 但无 DHCP，
+  则转向 DHCP 报文构造或广播处理方向。
