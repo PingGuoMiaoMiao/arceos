@@ -440,3 +440,27 @@
 - 下一步：在 `axdriver_aic8800` 中新增 `MM_SET_FILTER_REQUEST`（= `MM_RESET_REQUEST + 14`）命令，
   参数为单个 `u32` 小端 `0x1506A798`，在 STA 接口就绪后、关联之前（或紧随 `MM_ADD_IF`）发送并等待 confirm；
   补单元测试与真板复测。
+### 15:40 +08:00 — 更正：MM_SET_FILTER 不是根因（仅用于 monitor 模式）
+
+- 观察：上一条记录把 DHCP 收不到数据帧归因于"驱动未发送 `MM_SET_FILTER`"。动手前复核参考驱动的**调用现场**。
+- 判断依据：`rwnx_main.c` 两处调用（1163、2122）**都位于同一层判断之内**：
+  ```c
+  if (RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_MONITOR) {
+  #if defined(CONFIG_RWNX_MON_RXFILTER)
+      rwnx_send_set_filter(rwnx_hw, FIF_BCN_PRBRESP_PROMISC|FIF_OTHER_BSS|FIF_PSPOLL|FIF_PROBE_REQ);
+  #endif
+  }
+  ```
+  即 `MM_SET_FILTER` **只服务于 monitor/混杂模式**，正常 STA 关联流程根本不调用它。
+- 动作：撤销"新增 MM_SET_FILTER 命令"的修复计划；本条作为对上一条的更正。
+- 结果：
+  - **上一条的根因结论作废，不得据此修改驱动。**
+  - 教训（已并入排查纪律）：**找到同名函数不等于找到调用路径**——必须核对调用现场与守卫条件，
+    否则会把仅用于特殊模式的命令误当成通用缺失步骤。
+- 新线索：复核 `MM_START` 参数结构发现明显差异——
+  参考 `struct mm_start_req { struct phy_cfg_tag phy_cfg; u32_l uapsd_timeout; u16_l lp_clk_accuracy; }`，
+  其中 `phy_cfg_tag` 是 `u32 parameters[PHY_CFG_BUF_SIZE]` 的 PHY 配置缓冲区；
+  而 Rust 驱动 `management.rs::start_d80_stack` 只发送 4 字节 `&[1, 0, 1 << 5, 0]`。
+- 下一步：核对参考驱动实际构造 `mm_start_req` 的代码（`rwnx_msg_tx.c` 中的 `rwnx_send_me_...`/
+  `mm_start` 相关实现），确认这 4 字节是否恰好对应某个子结构、以及 PHY 参数缺失是否会导致
+  固件以受限模式启动（只转发管理帧）。**在拿到调用现场证据前不做修改。**
