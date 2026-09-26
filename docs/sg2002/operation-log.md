@@ -464,3 +464,32 @@
 - 下一步：核对参考驱动实际构造 `mm_start_req` 的代码（`rwnx_msg_tx.c` 中的 `rwnx_send_me_...`/
   `mm_start` 相关实现），确认这 4 字节是否恰好对应某个子结构、以及 PHY 参数缺失是否会导致
   固件以受限模式启动（只转发管理帧）。**在拿到调用现场证据前不做修改。**
+### 15:0x +08:00 — 第 4 次运行：走到 EAPOL M3 才失败；排除 SDIO 时钟与 PHY 延迟
+
+- 观察：第 4 次运行（镜像同为含 dump 的 `6DE7C4D6`）比之前都远：
+  固件 5 个全部加载、`FIRMWARE_BOOT_PASS`／`STACK_PASS`／`RF_MAC_PASS`／`MANAGEMENT_PASS`／
+  `ME_PASS`／`STA_INTERFACE_PASS`／`SCAN_PASS` 全过、凭据通过、`ASSOCIATION_PASS`、M1 收到、M2 已发；
+  随后 `AIC8800_POST_MESSAGE_2_UNDECODED` 出现 9 次，接着
+  `AIC8800_EAPOL_MESSAGE_3_FAILED decode MissingMessage3KeyInformation { required: 392, actual: 138 }`。
+- 判断依据与更正：
+  1. **上一条对 392 的解读是错的**：读源码 `eapol.rs:260` 可知
+     `required` 是 `WPA2_PSK_CCMP_MESSAGE_3_REQUIRED_INFORMATION`（**位掩码 0x188**），
+     `actual` 是收到的 `key_information`（**0x8A**），并非"字节长度不足"。
+     对照前几次成功的 M3：`key-info=0x13ca`。**这次 M3 的 key-info 字段被读成了 0x8A**，
+     即 M3 帧本身被解析错了位置。
+  2. 第 3 次（传第 5 个固件时板子复位）与第 4 次用的是**同一镜像**却失败在不同点；
+     加上此前 13:14 到 DHCP、14:09 密码为空 —— **四次运行四个不同失败点**。
+     这说明不是单一确定的逻辑分支，而是**链路上间歇性损坏**，或**依赖"来的是哪一帧"的解析缺陷**。
+  3. SDIO 配置比对（与官方 SDK `linux_5.10/drivers/mmc/host/cvitek/` 逐项核对）：
+     - 时钟：请求 25 MHz，`clock_divider(375 MHz, 25 MHz)` 得到实际 **23.4375 MHz**（375/16），**未超频**；
+     - PHY 延迟：`CV181X_DEFAULT_PHY_DELAY = 0x0100_0100`，与厂商源码注释
+       `reg_0x240[25:24]=1 reg_0x240[22:16]=0 reg_0x240[9:8]=1 reg_0x240[6:0]=0` **逐位吻合**；
+     - RX 硬件头：参考 `RX_HWHRD_LEN = 60`，与驱动 `SDIO_RECEIVE_HEADER_LENGTH = 60` 一致。
+     三项均排除。
+- 结果：**SDIO 时钟、PHY 采样延迟、RX 包头长度均与官方实现一致，不是配置错误。**
+  失败现象指向数据帧内容层面的解析/损坏，需要看到真实帧字节才能定性。
+- 下一步：
+  1. 把字节 dump 从"网络设备阶段"扩展到**关联阶段**（`POST_MESSAGE_2_UNDECODED` 与 M3 解码失败处
+     都持有 packet 字节），这样即使只走到 M3 也能拿到证据；
+  2. 建议确认板子供电：多次运行失败点漂移，符合电流负载变化时的边缘行为
+     （AIC8800 射频开启时电流上冲），优先用独立供电或供电充足的 USB 口复测。
