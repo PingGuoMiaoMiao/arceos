@@ -900,6 +900,16 @@ pub fn run<H: DhcpBoundHandler>(handler: &mut H) {
                     }
                     Err(error) => {
                         println!("AIC8800_EAPOL_MESSAGE_3_FAILED decode {error:?}");
+                        let limit = frame.payload.len().min(96);
+                        axstd::print!(
+                            "AIC8800_EAPOL_MESSAGE_3_DUMP payload_len={} qos={} bytes=",
+                            frame.payload.len(),
+                            frame.qos
+                        );
+                        for byte in &frame.payload[..limit] {
+                            axstd::print!("{:02x}", byte);
+                        }
+                        axstd::println!("");
                         return;
                     }
                 }
@@ -909,10 +919,18 @@ pub fn run<H: DhcpBoundHandler>(handler: &mut H) {
                 frame.ether_type,
                 frame.payload.len()
             ),
-            Ok(AssociationEvent::UndecodedData { packet, error }) => println!(
-                "AIC8800_POST_MESSAGE_2_UNDECODED error={error:?} packet-length={}",
-                packet.len()
-            ),
+            Ok(AssociationEvent::UndecodedData { packet, error }) => {
+                println!(
+                    "AIC8800_POST_MESSAGE_2_UNDECODED error={error:?} packet-length={}",
+                    packet.len()
+                );
+                let limit = packet.len().min(80);
+                axstd::print!("AIC8800_POST_MESSAGE_2_UNDECODED_RAW bytes=");
+                for byte in &packet[..limit] {
+                    axstd::print!("{:02x}", byte);
+                }
+                axstd::println!("");
+            }
             Ok(AssociationEvent::Transport { message_type }) => {
                 println!("AIC8800_POST_MESSAGE_2_TRANSPORT type={message_type}")
             }
