@@ -1,7 +1,7 @@
 use core::cell::Cell;
 
 use axdriver_aic8800::association::{AicAssociationClient, AicAssociationError, AssociationEvent};
-use axdriver_aic8800::data::DataDecodeError;
+use axdriver_aic8800::data::{DataDecodeError, SDIO_RECEIVE_HEADER_LENGTH};
 use axdriver_aic8800::response::{AicResponseError, AicResponseIo};
 use axdriver_aic8800::sdio::AicCommandIo;
 use smoltcp::iface::SocketSet;
@@ -31,6 +31,7 @@ pub struct AicEthernetDevice<'a, I> {
     undecoded_other: usize,
     unrelated_events: usize,
     confirmation_events: usize,
+    llc_dumps: usize,
     last_transmit_ether_type: u16,
     last_transmit_length: usize,
     last_receive_ether_type: u16,
@@ -62,6 +63,7 @@ where
             undecoded_other: 0,
             unrelated_events: 0,
             confirmation_events: 0,
+            llc_dumps: 0,
             last_transmit_ether_type: 0,
             last_transmit_length: 0,
             last_receive_ether_type: 0,
@@ -223,7 +225,7 @@ where
                 self.note_transport_event();
                 return None;
             }
-            Ok(AssociationEvent::UndecodedData { error, .. }) => {
+            Ok(AssociationEvent::UndecodedData { packet, error }) => {
                 match error {
                     DataDecodeError::UnsupportedFrameControl { .. } => {
                         self.undecoded_management += 1
@@ -233,6 +235,19 @@ where
                 }
                 if self.transport_events < 8 {
                     axstd::println!("AIC8800_NETWORK_EVENT undecoded-data error={error:?}");
+                }
+                if error == DataDecodeError::InvalidLlcSnapHeader && self.llc_dumps < 3 {
+                    self.llc_dumps += 1;
+                    let limit = packet.len().min(SDIO_RECEIVE_HEADER_LENGTH + 64);
+                    axstd::print!(
+                        "AIC8800_LLC_DUMP sdio_header={} packet_len={} bytes=",
+                        SDIO_RECEIVE_HEADER_LENGTH,
+                        packet.len()
+                    );
+                    for byte in &packet[..limit] {
+                        axstd::print!("{:02x}", byte);
+                    }
+                    axstd::println!("");
                 }
                 self.note_transport_event();
                 return None;
