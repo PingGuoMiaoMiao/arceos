@@ -32,6 +32,7 @@ pub struct AicEthernetDevice<'a, I> {
     unrelated_events: usize,
     confirmation_events: usize,
     llc_dumps: usize,
+    llc_subtypes: [usize; 16],
     last_transmit_ether_type: u16,
     last_transmit_length: usize,
     last_receive_ether_type: u16,
@@ -64,6 +65,7 @@ where
             unrelated_events: 0,
             confirmation_events: 0,
             llc_dumps: 0,
+            llc_subtypes: [0; 16],
             last_transmit_ether_type: 0,
             last_transmit_length: 0,
             last_receive_ether_type: 0,
@@ -95,6 +97,13 @@ where
                 self.unrelated_events,
                 self.confirmation_events,
             );
+            axstd::print!("AIC8800_LLC_SUBTYPES");
+            for (index, count) in self.llc_subtypes.iter().enumerate() {
+                if *count > 0 {
+                    axstd::print!(" s{}={}", index, count);
+                }
+            }
+            axstd::println!("");
         }
     }
 
@@ -230,7 +239,13 @@ where
                     DataDecodeError::UnsupportedFrameControl { .. } => {
                         self.undecoded_management += 1
                     }
-                    DataDecodeError::InvalidLlcSnapHeader => self.undecoded_llc += 1,
+                    DataDecodeError::InvalidLlcSnapHeader => {
+                        self.undecoded_llc += 1;
+                        if packet.len() > SDIO_RECEIVE_HEADER_LENGTH {
+                            let subtype = usize::from(packet[SDIO_RECEIVE_HEADER_LENGTH] >> 4);
+                            self.llc_subtypes[subtype & 0x0f] += 1;
+                        }
+                    }
                     _ => self.undecoded_other += 1,
                 }
                 if self.transport_events < 8 {
