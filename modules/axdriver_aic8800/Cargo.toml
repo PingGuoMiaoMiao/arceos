@@ -1,0 +1,21 @@
+[package]
+name = "axdriver_aic8800"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "AIC8800 SDIO protocol support for ArceOS"
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+sg2002 = ["dep:axdriver_sg2002_sdio"]
+
+[dependencies]
+aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
+axdriver_sg2002_sdio = { workspace = true, optional = true }
+hmac = { version = "0.13.0", default-features = false }
+pbkdf2 = { version = "0.13.0", default-features = false, features = ["hmac"] }
+sha1 = { version = "0.11.0", default-features = false, features = ["zeroize"] }
+zeroize = { version = "1.9.0", default-features = false }

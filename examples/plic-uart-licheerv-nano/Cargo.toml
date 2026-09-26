@@ -1,0 +1,10 @@
+[package]
+name = "arceos-plic-uart-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axhal = { workspace = true, features = ["irq", "myplat"] }
+axstd = { workspace = true, features = ["irq", "myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano", features = ["irq"] }

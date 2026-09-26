@@ -1,0 +1,19 @@
+[package]
+name = "axmodel_mushroom_yolov5"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Reusable YOLOv5 mushroom inference core for SG2002"
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+hardware = ["dep:axalloc", "dep:axhal", "dep:axplat-riscv64-licheerv-nano"]
+
+[dependencies]
+libm = "0.2"
+axalloc = { workspace = true, optional = true }
+axhal = { workspace = true, optional = true, features = ["myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano", optional = true }

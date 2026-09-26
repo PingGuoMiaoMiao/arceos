@@ -6,8 +6,15 @@
 *.o
 *.elf
 *.bin
+!examples/tpu-execute-licheerv-nano/mushroom_yolov5s_program_0_dmabuf_subfunc_1.bin
+!examples/tpu-execute-licheerv-nano/mushroom_yolov5s_weight.bin
 qemu.log
 rusty-tags.vi
 /.project*
 /.axconfig.*
 /crates
+# Locally copied proprietary board firmware. Never commit these binaries.
+.local-firmware/
+.local-evidence/
+__pycache__/
+*.pyc

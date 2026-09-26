@@ -1,0 +1,13 @@
+[package]
+name = "arceos-aic8800-firmware-boot-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axdriver_aic8800 = { workspace = true, features = ["sg2002"] }
+axdriver_sg2002_sdio = { workspace = true, features = ["hardware"] }
+axhal = { workspace = true, features = ["irq", "myplat"] }
+axstd = { workspace = true, features = ["alloc", "irq", "myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano", features = ["irq"] }
+smoltcp = { git = "https://github.com/rcore-os/smoltcp.git", rev = "21a2f82", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "socket-dhcpv4"] }

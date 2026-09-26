@@ -1,0 +1,24 @@
+[package]
+name = "arceos-mushroom-web-licheerv-nano"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+hardware = [
+    "axmodel_mushroom_yolov5/hardware",
+    "dep:arceos-aic8800-firmware-boot-licheerv-nano",
+    "dep:axhal",
+    "dep:axstd",
+    "dep:axplat-riscv64-licheerv-nano",
+    "dep:smoltcp",
+]
+
+[dependencies]
+axmodel_mushroom_yolov5 = { workspace = true }
+arceos-aic8800-firmware-boot-licheerv-nano = { path = "../aic8800-firmware-boot-licheerv-nano", optional = true }
+axhal = { workspace = true, optional = true, features = ["irq", "myplat"] }
+axstd = { workspace = true, optional = true, features = ["alloc", "irq", "myplat"] }
+axplat-riscv64-licheerv-nano = { path = "../../platforms/axplat-riscv64-licheerv-nano", optional = true, features = ["irq"] }
+smoltcp = { git = "https://github.com/rcore-os/smoltcp.git", rev = "21a2f82", optional = true, default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "socket-dhcpv4", "socket-tcp"] }

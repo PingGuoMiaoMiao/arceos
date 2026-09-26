@@ -17,6 +17,9 @@ members = [
     "modules/axsync",
     "modules/axtask",
     "modules/axipi",
+    "modules/axdriver_sg2002_sdio",
+    "modules/axdriver_aic8800",
+    "modules/axmodel_mushroom_yolov5",
 
     "api/axfeat",
     "api/arceos_api",
@@ -27,9 +30,24 @@ members = [
 
     "examples/helloworld",
     "examples/helloworld-myplat",
+    "examples/helloworld-licheerv-nano",
+    "examples/plic-uart-licheerv-nano",
+    "examples/sdio-enumerate-licheerv-nano",
+    "examples/aic8800-init-licheerv-nano",
+    "examples/aic8800-chip-id-licheerv-nano",
+    "examples/aic8800-firmware-block-licheerv-nano",
+    "examples/aic8800-firmware-boot-licheerv-nano",
+    "examples/tpu-execute-licheerv-nano",
+    "examples/mushroom-web-licheerv-nano",
+    "examples/tpu-mmio-licheerv-nano",
+    "examples/tpu-init-licheerv-nano",
+    "examples/tpu-memory-licheerv-nano",
+    "examples/tpu-dmabuf-licheerv-nano",
     "examples/httpclient",
     "examples/httpserver",
     "examples/shell",
+
+    "platforms/axplat-riscv64-licheerv-nano",
 ]
 
 [workspace.package]
@@ -66,6 +84,9 @@ axsync = { path = "modules/axsync" }
 axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 axipi = { path = "modules/axipi" }
+axdriver_sg2002_sdio = { path = "modules/axdriver_sg2002_sdio" }
+axdriver_aic8800 = { path = "modules/axdriver_aic8800" }
+axmodel_mushroom_yolov5 = { path = "modules/axmodel_mushroom_yolov5" }
 
 [profile.release]
 lto = true
