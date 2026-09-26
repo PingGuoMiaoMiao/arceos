@@ -1,6 +1,7 @@
 use core::cell::Cell;
 
 use axdriver_aic8800::association::{AicAssociationClient, AicAssociationError, AssociationEvent};
+use axdriver_aic8800::data::DataDecodeError;
 use axdriver_aic8800::response::{AicResponseError, AicResponseIo};
 use axdriver_aic8800::sdio::AicCommandIo;
 use smoltcp::iface::SocketSet;
@@ -24,6 +25,12 @@ pub struct AicEthernetDevice<'a, I> {
     transmitted_frames: usize,
     received_frames: usize,
     transport_events: usize,
+    events_since_summary: usize,
+    undecoded_management: usize,
+    undecoded_llc: usize,
+    undecoded_other: usize,
+    unrelated_events: usize,
+    confirmation_events: usize,
     last_transmit_ether_type: u16,
     last_transmit_length: usize,
     last_receive_ether_type: u16,
@@ -49,6 +56,12 @@ where
             transmitted_frames: 0,
             received_frames: 0,
             transport_events: 0,
+            events_since_summary: 0,
+            undecoded_management: 0,
+            undecoded_llc: 0,
+            undecoded_other: 0,
+            unrelated_events: 0,
+            confirmation_events: 0,
             last_transmit_ether_type: 0,
             last_transmit_length: 0,
             last_receive_ether_type: 0,
@@ -58,6 +71,29 @@ where
 
     pub fn transport_failed(&self) -> bool {
         self.transport_failed.get()
+    }
+
+    /// Count one non-data transport event and periodically report the split.
+    ///
+    /// Only the first eight events are printed in detail, which hides how the
+    /// remaining ones are distributed. Counting them by kind is what tells apart a
+    /// benign beacon flood from data frames that arrive but fail to decode.
+    fn note_transport_event(&mut self) {
+        self.transport_events += 1;
+        self.events_since_summary += 1;
+        if self.events_since_summary >= 256 {
+            self.events_since_summary = 0;
+            axstd::println!(
+                "AIC8800_RX_SUMMARY events={} data={} mgmt_undecoded={} llc_invalid={} other_undecoded={} unrelated={} confirmation={}",
+                self.transport_events,
+                self.received_frames,
+                self.undecoded_management,
+                self.undecoded_llc,
+                self.undecoded_other,
+                self.unrelated_events,
+                self.confirmation_events,
+            );
+        }
     }
 
     pub fn diagnostics(&self) -> (usize, usize, usize, u16, usize, u16, usize) {
@@ -173,7 +209,7 @@ where
                         message_type
                     );
                 }
-                self.transport_events += 1;
+                self.note_transport_event();
                 return None;
             }
             Ok(AssociationEvent::Unrelated { message_id }) => {
@@ -183,21 +219,30 @@ where
                         message_id
                     );
                 }
-                self.transport_events += 1;
+                self.unrelated_events += 1;
+                self.note_transport_event();
                 return None;
             }
             Ok(AssociationEvent::UndecodedData { error, .. }) => {
+                match error {
+                    DataDecodeError::UnsupportedFrameControl { .. } => {
+                        self.undecoded_management += 1
+                    }
+                    DataDecodeError::InvalidLlcSnapHeader => self.undecoded_llc += 1,
+                    _ => self.undecoded_other += 1,
+                }
                 if self.transport_events < 8 {
                     axstd::println!("AIC8800_NETWORK_EVENT undecoded-data error={error:?}");
                 }
-                self.transport_events += 1;
+                self.note_transport_event();
                 return None;
             }
             Ok(AssociationEvent::Confirmation(_)) | Ok(AssociationEvent::Indication(_)) => {
                 if self.transport_events < 8 {
                     axstd::println!("AIC8800_NETWORK_EVENT association-control");
                 }
-                self.transport_events += 1;
+                self.confirmation_events += 1;
+                self.note_transport_event();
                 return None;
             }
         };
